@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { User, Trophy, Pencil, AlertCircle } from 'lucide-react';
+import { User, Trophy, Pencil, AlertCircle, SlidersHorizontal, Check } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, BarChart, Bar,
@@ -233,66 +233,41 @@ const RUN_RAW = [
 ];
 
 function getAgeGroupIdx(age: number): number {
-  if (age < 22) return 0;
-  if (age <= 24) return 1;
-  if (age <= 27) return 2;
-  if (age <= 30) return 3;
-  if (age <= 33) return 4;
-  if (age <= 36) return 5;
-  if (age <= 39) return 6;
-  if (age <= 42) return 7;
-  if (age <= 45) return 8;
-  if (age <= 48) return 9;
-  if (age <= 51) return 10;
-  if (age <= 54) return 11;
-  if (age <= 57) return 12;
-  return 13;
+  if (age < 22) return 0; if (age <= 24) return 1; if (age <= 27) return 2;
+  if (age <= 30) return 3; if (age <= 33) return 4; if (age <= 36) return 5;
+  if (age <= 39) return 6; if (age <= 42) return 7; if (age <= 45) return 8;
+  if (age <= 48) return 9; if (age <= 51) return 10; if (age <= 54) return 11;
+  if (age <= 57) return 12; return 13;
 }
 
 function buildStaticMap(raw: (number | string)[][]): Map<number, number[]> {
   const map = new Map<number, number[]>();
   for (const row of raw) {
-    const reps = row[0] as number;
     const pts: number[] = [];
-    for (let i = 1; i <= 14; i++) {
-      const v = row[i];
-      pts.push(v === "" || v === undefined ? 25 : v as number);
-    }
-    map.set(reps, pts);
+    for (let i = 1; i <= 14; i++) { const v = row[i]; pts.push(v === "" || v === undefined ? 25 : v as number); }
+    map.set(row[0] as number, pts);
   }
   return map;
 }
-
 const PUSHUP_MAP = buildStaticMap(PUSHUP_RAW);
-const SITUP_MAP = buildStaticMap(SITUP_RAW);
+const SITUP_MAP  = buildStaticMap(SITUP_RAW);
 
-function timeToSec(t: string): number {
-  const [m, s] = t.split(':').map(Number);
-  return m * 60 + s;
-}
+function timeToSec(t: string): number { const [m, s] = t.split(':').map(Number); return m * 60 + s; }
 
 const RUN_TABLE: [number, number[]][] = RUN_RAW.map(row => {
-  const secs = timeToSec(row[0] as string);
   const pts: number[] = [];
-  for (let i = 1; i <= 14; i++) {
-    const v = row[i];
-    pts.push(v === "" || v === undefined ? 50 : v as number);
-  }
-  return [secs, pts];
+  for (let i = 1; i <= 14; i++) { const v = row[i]; pts.push(v === "" || v === undefined ? 50 : v as number); }
+  return [timeToSec(row[0] as string), pts];
 });
 
-function getStaticPts(map: Map<number, number[]>, reps: number, ageIdx: number): number {
-  return (map.get(reps) ?? [])[ageIdx] ?? 0;
+function getStaticPts(map: Map<number, number[]>, reps: number, idx: number): number {
+  return (map.get(reps) ?? [])[idx] ?? 0;
 }
-
-function getRunPts(seconds: number, ageIdx: number): number {
-  const rounded = Math.ceil(seconds / 10) * 10;
-  for (const [maxSec, pts] of RUN_TABLE) {
-    if (rounded <= maxSec) return pts[ageIdx] ?? 0;
-  }
+function getRunPts(seconds: number, idx: number): number {
+  const r = Math.ceil(seconds / 10) * 10;
+  for (const [ms, pts] of RUN_TABLE) { if (r <= ms) return pts[idx] ?? 0; }
   return 0;
 }
-
 function calcIppt(pushups: number, situps: number, runSec: number, age: number) {
   const idx = getAgeGroupIdx(age);
   const pu = getStaticPts(PUSHUP_MAP, pushups, idx);
@@ -309,30 +284,210 @@ function calcIppt(pushups: number, situps: number, runSec: number, age: number) 
 }
 
 const AWARD_STYLE: Record<string, string> = {
-  Gold:   'bg-yellow-400 text-yellow-900',
-  Silver: 'bg-slate-300 text-slate-800',
-  Pass:   'bg-green-100 text-green-800',
-  Fail:   'bg-red-100 text-red-800',
+  Gold: 'bg-yellow-400 text-yellow-900', Silver: 'bg-slate-300 text-slate-800',
+  Pass: 'bg-green-100 text-green-800',   Fail:   'bg-red-100 text-red-800',
 };
-
 const fmtTime = (sec: number | null) => {
-  if (sec === null || sec === undefined) return '-';
+  if (sec == null) return '-';
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 };
-
 const RANKS = ['ME1T'];
 
-// ─── Activity type config ─────────────────────────────────────────────────────
+// ─── Stat definitions ─────────────────────────────────────────────────────────
+// Each stat has: an id, a label, a required data check, and a render function
 
-type ActivityType = 'run' | 'cycle' | 'swim' | 'gym' | 'other';
-
-const TYPE_CONFIG: Record<ActivityType, { label: string; color: string; hasDistance: boolean; hasIppt: boolean }> = {
-  run:   { label: 'Run',   color: '#3b82f6', hasDistance: true,  hasIppt: true  },
-  cycle: { label: 'Cycle', color: '#f97316', hasDistance: true,  hasIppt: false },
-  swim:  { label: 'Swim',  color: '#06b6d4', hasDistance: true,  hasIppt: false },
-  gym:   { label: 'Gym',   color: '#8b5cf6', hasDistance: false, hasIppt: true  },
-  other: { label: 'Other', color: '#6b7280', hasDistance: false, hasIppt: false },
+type GraphData = {
+  label: string;
+  run_km: number; cycle_km: number; swim_km: number;
+  count: number; duration: number;
+  pushups: number[]; situps: number[]; run_seconds: number[];
+  avg_pushups: number | null; avg_situps: number | null;
+  avg_run_sec: number | null; avg_duration: number | null;
 };
+
+type StatDef = {
+  id: string;
+  label: string;
+  description: string;
+  // Whether this stat is available given the current activities
+  available: (acts: Activity[]) => boolean;
+  render: (data: GraphData[], view: 'week' | 'month') => React.ReactNode;
+};
+
+const STAT_DEFS: StatDef[] = [
+  {
+    id: 'run_frequency',
+    label: 'Run Frequency',
+    description: 'Number of run sessions per period',
+    available: acts => acts.some(a => a.type === 'run'),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data.filter(d => d.run_km > 0 || d.count > 0)}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Bar dataKey="count" name="Run Sessions" fill="#3b82f6" />
+        </BarChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'run_distance',
+    label: 'Run Distance',
+    description: 'Total running distance (km) per period',
+    available: acts => acts.some(a => a.type === 'run' && a.distance_km),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Bar dataKey="run_km" name="Run (km)" fill="#3b82f6" />
+        </BarChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'run_timing',
+    label: 'Run Timing',
+    description: '2.4km run time progress (lower = better)',
+    available: acts => acts.some(a => a.type === 'run' && a.run_seconds),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data.filter(d => d.avg_run_sec)}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtTime(v)} />
+          <Tooltip formatter={(v: number) => fmtTime(v)} />
+          <Line type="monotone" dataKey="avg_run_sec" name="Avg Run Time" stroke="#3b82f6" dot connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'cycle_frequency',
+    label: 'Cycle Frequency',
+    description: 'Number of cycling sessions per period',
+    available: acts => acts.some(a => a.type === 'cycle'),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Bar dataKey="cycle_km" name="Cycle Sessions" fill="#f97316" />
+        </BarChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'cycle_distance',
+    label: 'Cycle Distance',
+    description: 'Total cycling distance (km) per period',
+    available: acts => acts.some(a => a.type === 'cycle' && a.distance_km),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Bar dataKey="cycle_km" name="Cycle (km)" fill="#f97316" />
+        </BarChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'swim_frequency',
+    label: 'Swim Frequency',
+    description: 'Number of swim sessions per period',
+    available: acts => acts.some(a => a.type === 'swim'),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Bar dataKey="swim_km" name="Swim Sessions" fill="#06b6d4" />
+        </BarChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'swim_distance',
+    label: 'Swim Distance',
+    description: 'Total swim distance (km) per period',
+    available: acts => acts.some(a => a.type === 'swim' && a.distance_km),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Bar dataKey="swim_km" name="Swim (km)" fill="#06b6d4" />
+        </BarChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'pushups',
+    label: 'Push-up Progress',
+    description: 'Average push-up reps over time',
+    available: acts => acts.some(a => a.pushups),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data.filter(d => d.avg_pushups)}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Line type="monotone" dataKey="avg_pushups" name="Avg Push-ups" stroke="#8b5cf6" dot connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'situps',
+    label: 'Sit-up Progress',
+    description: 'Average sit-up reps over time',
+    available: acts => acts.some(a => a.situps),
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data.filter(d => d.avg_situps)}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Line type="monotone" dataKey="avg_situps" name="Avg Sit-ups" stroke="#10b981" dot connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+    ),
+  },
+  {
+    id: 'overall_frequency',
+    label: 'Overall Activity Frequency',
+    description: 'Total sessions across all activity types',
+    available: acts => acts.length > 0,
+    render: (data, _) => (
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip /><Legend />
+          <Bar dataKey="run_km" name="Run" fill="#3b82f6" stackId="a" />
+          <Bar dataKey="cycle_km" name="Cycle" fill="#f97316" stackId="a" />
+          <Bar dataKey="swim_km" name="Swim" fill="#06b6d4" stackId="a" />
+        </BarChart>
+      </ResponsiveContainer>
+    ),
+  },
+];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -343,30 +498,21 @@ export default function ProfileStatistics() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [editOpen, setEditOpen] = useState(false);
+  const [selectOpen, setSelectOpen] = useState(false);
   const [graphView, setGraphView] = useState<'week' | 'month'>('month');
-  const [selectedType, setSelectedType] = useState<ActivityType | null>(null);
+  const [selectedStats, setSelectedStats] = useState<Set<string>>(new Set());
   const [editForm, setEditForm] = useState<Partial<ProfileData>>({});
 
   useEffect(() => { if (user) { fetchProfile(); fetchActivities(); } }, [user]);
 
   const fetchProfile = async () => {
     const { data } = await supabase.from('profiles').select('*').eq('id', user!.id).single();
-    if (data) {
-      setProfileData(data as unknown as ProfileData);
-      setEditForm(data as unknown as ProfileData);
-    }
+    if (data) { setProfileData(data as unknown as ProfileData); setEditForm(data as unknown as ProfileData); }
   };
 
   const fetchActivities = async () => {
-    const { data } = await supabase
-      .from('activities').select('*').eq('user_id', user!.id).order('date', { ascending: true });
-    if (data) {
-      const acts = data as Activity[];
-      setActivities(acts);
-      // Auto-select first available type
-      const types = Array.from(new Set(acts.map(a => a.type))) as ActivityType[];
-      if (types.length > 0 && !selectedType) setSelectedType(types[0]);
-    }
+    const { data } = await supabase.from('activities').select('*').eq('user_id', user!.id).order('date', { ascending: true });
+    if (data) setActivities(data as Activity[]);
   };
 
   const saveProfile = async () => {
@@ -375,32 +521,28 @@ export default function ProfileStatistics() {
     else { toast({ title: 'Profile updated!' }); fetchProfile(); setEditOpen(false); }
   };
 
-  // Available types (only those with at least one activity)
-  const availableTypes = Array.from(new Set(activities.map(a => a.type))) as ActivityType[];
+  const toggleStat = (id: string) => {
+    setSelectedStats(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
-  // Activities filtered by selected type
-  const filtered = selectedType ? activities.filter(a => a.type === selectedType) : [];
-
-  // Graph data grouped by week or month for the selected type
-  const graphData = (() => {
-    type G = {
-      label: string;
-      distance_km: number;
-      count: number;
-      duration: number;
-      pushups: number[];
-      situps: number[];
-      run_seconds: number[];
-    };
+  // Build graph data across all activities
+  const graphData: GraphData[] = (() => {
+    type G = { label: string; run_km: number; cycle_km: number; swim_km: number; count: number; duration: number; pushups: number[]; situps: number[]; run_seconds: number[] };
     const groups: Record<string, G> = {};
-    filtered.forEach(a => {
+    activities.forEach(a => {
       const d = new Date(a.date);
       const key = graphView === 'week'
         ? (() => { const w = new Date(d); w.setDate(d.getDate() - d.getDay()); return w.toISOString().split('T')[0]; })()
         : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!groups[key]) groups[key] = { label: key, distance_km: 0, count: 0, duration: 0, pushups: [], situps: [], run_seconds: [] };
+      if (!groups[key]) groups[key] = { label: key, run_km: 0, cycle_km: 0, swim_km: 0, count: 0, duration: 0, pushups: [], situps: [], run_seconds: [] };
       groups[key].count++;
-      if (a.distance_km) groups[key].distance_km += a.distance_km;
+      if (a.type === 'run' && a.distance_km) groups[key].run_km += a.distance_km;
+      if (a.type === 'cycle' && a.distance_km) groups[key].cycle_km += a.distance_km;
+      if (a.type === 'swim' && a.distance_km) groups[key].swim_km += a.distance_km;
       if (a.duration_minutes) groups[key].duration += a.duration_minutes;
       if (a.pushups) groups[key].pushups.push(a.pushups);
       if (a.situps) groups[key].situps.push(a.situps);
@@ -415,7 +557,11 @@ export default function ProfileStatistics() {
     }));
   })();
 
-  const typeConfig = selectedType ? TYPE_CONFIG[selectedType] : null;
+  // Available stats based on actual activity data
+  const availableStats = STAT_DEFS.filter(s => s.available(activities));
+  // Selected stats that are also available
+  const visibleStats = STAT_DEFS.filter(s => selectedStats.has(s.id) && s.available(activities));
+
   const hasAge = profileData?.age != null && profileData.age > 0;
   const hasIpptData = !!(profileData?.ippt_pushups && profileData?.ippt_situps && profileData?.ippt_run_seconds);
   const ippt = hasAge && hasIpptData
@@ -538,7 +684,7 @@ export default function ProfileStatistics() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {!hasAge && (hasIpptData || !hasIpptData) && (
+          {!hasAge && (
             <div className="flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 p-3 mb-4 text-sm text-yellow-800">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>
@@ -551,9 +697,9 @@ export default function ProfileStatistics() {
           )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: 'Push-ups', value: profileData?.ippt_pushups ?? '-', pts: ippt?.pu },
-              { label: 'Sit-ups',  value: profileData?.ippt_situps ?? '-',  pts: ippt?.su },
-              { label: '2.4km Run', value: fmtTime(profileData?.ippt_run_seconds ?? null), pts: ippt?.run },
+              { label: 'Push-ups',    value: profileData?.ippt_pushups ?? '-',                    pts: ippt?.pu  },
+              { label: 'Sit-ups',     value: profileData?.ippt_situps ?? '-',                     pts: ippt?.su  },
+              { label: '2.4km Run',   value: fmtTime(profileData?.ippt_run_seconds ?? null),      pts: ippt?.run },
               { label: 'Total Score', value: ippt?.total ?? '-', pts: undefined, award: ippt?.award },
             ].map(s => (
               <div key={s.label} className="text-center rounded-lg border p-3">
@@ -574,133 +720,82 @@ export default function ProfileStatistics() {
       {/* Activity Statistics */}
       <Card>
         <CardHeader>
-          <CardTitle>Activity Statistics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {activities.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No activities logged yet.</p>
-          ) : (
-            <div className="space-y-4">
-
-              {/* Type selector tabs */}
-              <div className="flex gap-2 flex-wrap">
-                {availableTypes.map(type => {
-                  const cfg = TYPE_CONFIG[type] ?? { label: type, color: '#6b7280' };
-                  const isActive = selectedType === type;
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => setSelectedType(type)}
-                      className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                        isActive
-                          ? 'text-white border-transparent'
-                          : 'bg-background text-muted-foreground border-border hover:bg-muted'
-                      }`}
-                      style={isActive ? { backgroundColor: cfg.color, borderColor: cfg.color } : {}}
-                    >
-                      {cfg.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Week / Month toggle */}
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  {filtered.length} session{filtered.length !== 1 ? 's' : ''} logged
-                </p>
+          <div className="flex items-center justify-between">
+            <CardTitle>Activity Statistics</CardTitle>
+            {activities.length > 0 && (
+              <div className="flex items-center gap-2">
                 <div className="flex rounded-lg border overflow-hidden text-sm">
                   <button className={`px-3 py-1 ${graphView === 'week' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`} onClick={() => setGraphView('week')}>Week</button>
                   <button className={`px-3 py-1 ${graphView === 'month' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`} onClick={() => setGraphView('month')}>Month</button>
                 </div>
+                {/* Select stats button */}
+                <Dialog open={selectOpen} onOpenChange={setSelectOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <SlidersHorizontal className="h-4 w-4 mr-1" />
+                      Select Stats
+                      {selectedStats.size > 0 && (
+                        <span className="ml-1.5 bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5">
+                          {selectedStats.size}
+                        </span>
+                      )}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-sm">
+                    <DialogHeader><DialogTitle>Select Statistics to Display</DialogTitle></DialogHeader>
+                    <div className="space-y-2 pt-2">
+                      {availableStats.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">No activities logged yet.</p>
+                      ) : (
+                        availableStats.map(stat => {
+                          const isSelected = selectedStats.has(stat.id);
+                          return (
+                            <button
+                              key={stat.id}
+                              onClick={() => toggleStat(stat.id)}
+                              className={`w-full flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+                                isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                              }`}
+                            >
+                              <div>
+                                <div className="text-sm font-medium text-foreground">{stat.label}</div>
+                                <div className="text-xs text-muted-foreground">{stat.description}</div>
+                              </div>
+                              {isSelected && <Check className="h-4 w-4 text-primary shrink-0 ml-2" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                    {selectedStats.size > 0 && (
+                      <Button variant="ghost" size="sm" className="w-full mt-2 text-muted-foreground" onClick={() => setSelectedStats(new Set())}>
+                        Clear all
+                      </Button>
+                    )}
+                  </DialogContent>
+                </Dialog>
               </div>
-
-              {/* Graphs — shown based on type */}
-              {typeConfig && (
-                <div className="space-y-6">
-
-                  {/* Frequency — always shown */}
-                  <div>
-                    <p className="text-sm font-medium mb-2">Frequency (sessions)</p>
-                    <ResponsiveContainer width="100%" height={180}>
-                      <BarChart data={graphData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                        <YAxis tick={{ fontSize: 10 }} />
-                        <Tooltip />
-                        <Bar dataKey="count" name="Sessions" fill={typeConfig.color} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  {/* Distance — only for run/cycle/swim */}
-                  {typeConfig.hasDistance && graphData.some(d => d.distance_km > 0) && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Distance (km)</p>
-                      <ResponsiveContainer width="100%" height={180}>
-                        <BarChart data={graphData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip />
-                          <Bar dataKey="distance_km" name="Distance (km)" fill={typeConfig.color} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-
-                  {/* Duration — always shown if data exists */}
-                  {graphData.some(d => d.duration > 0) && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Avg Duration (minutes)</p>
-                      <ResponsiveContainer width="100%" height={180}>
-                        <BarChart data={graphData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip />
-                          <Bar dataKey="avg_duration" name="Avg Duration (min)" fill={typeConfig.color} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-
-                  {/* IPPT training — push-ups & sit-ups */}
-                  {typeConfig.hasIppt && graphData.some(d => d.avg_pushups || d.avg_situps) && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">IPPT Training — Push-ups & Sit-ups</p>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <LineChart data={graphData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip /><Legend />
-                          <Line type="monotone" dataKey="avg_pushups" name="Push-ups" stroke="#3b82f6" dot connectNulls />
-                          <Line type="monotone" dataKey="avg_situps"  name="Sit-ups"  stroke="#10b981" dot connectNulls />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-
-                  {/* Run time — only for run type */}
-                  {selectedType === 'run' && graphData.some(d => d.avg_run_sec) && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">2.4km Run Time (lower = better)</p>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <LineChart data={graphData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtTime(v)} />
-                          <Tooltip formatter={(v: number) => fmtTime(v)} />
-                          <Line type="monotone" dataKey="avg_run_sec" name="Run Time" stroke={typeConfig.color} dot connectNulls />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {activities.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No activities logged yet.</p>
+          ) : visibleStats.length === 0 ? (
+            <div className="text-center py-8 space-y-2">
+              <p className="text-sm text-muted-foreground">No statistics selected.</p>
+              <Button variant="outline" size="sm" onClick={() => setSelectOpen(true)}>
+                <SlidersHorizontal className="h-4 w-4 mr-1" /> Select Stats to Display
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {visibleStats.map(stat => (
+                <div key={stat.id}>
+                  <p className="text-sm font-medium mb-2">{stat.label}</p>
+                  {stat.render(graphData, graphView)}
                 </div>
-              )}
-
+              ))}
             </div>
           )}
         </CardContent>
