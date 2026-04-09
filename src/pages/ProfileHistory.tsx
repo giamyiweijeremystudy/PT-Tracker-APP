@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { User, Trophy, Pencil, BarChart2, AlertCircle } from 'lucide-react';
+import { User, Trophy, Pencil, AlertCircle } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, BarChart, Bar,
@@ -282,9 +282,7 @@ const RUN_TABLE: [number, number[]][] = RUN_RAW.map(row => {
 });
 
 function getStaticPts(map: Map<number, number[]>, reps: number, ageIdx: number): number {
-  const row = map.get(reps);
-  if (!row) return 0;
-  return row[ageIdx] ?? 0;
+  return (map.get(reps) ?? [])[ageIdx] ?? 0;
 }
 
 function getRunPts(seconds: number, ageIdx: number): number {
@@ -324,6 +322,18 @@ const fmtTime = (sec: number | null) => {
 
 const RANKS = ['ME1T'];
 
+// ─── Activity type config ─────────────────────────────────────────────────────
+
+type ActivityType = 'run' | 'cycle' | 'swim' | 'gym' | 'other';
+
+const TYPE_CONFIG: Record<ActivityType, { label: string; color: string; hasDistance: boolean; hasIppt: boolean }> = {
+  run:   { label: 'Run',   color: '#3b82f6', hasDistance: true,  hasIppt: true  },
+  cycle: { label: 'Cycle', color: '#f97316', hasDistance: true,  hasIppt: false },
+  swim:  { label: 'Swim',  color: '#06b6d4', hasDistance: true,  hasIppt: false },
+  gym:   { label: 'Gym',   color: '#8b5cf6', hasDistance: false, hasIppt: true  },
+  other: { label: 'Other', color: '#6b7280', hasDistance: false, hasIppt: false },
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ProfileStatistics() {
@@ -333,8 +343,8 @@ export default function ProfileStatistics() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [editOpen, setEditOpen] = useState(false);
-  const [graphOpen, setGraphOpen] = useState(false);
   const [graphView, setGraphView] = useState<'week' | 'month'>('month');
+  const [selectedType, setSelectedType] = useState<ActivityType | null>(null);
   const [editForm, setEditForm] = useState<Partial<ProfileData>>({});
 
   useEffect(() => { if (user) { fetchProfile(); fetchActivities(); } }, [user]);
@@ -348,8 +358,15 @@ export default function ProfileStatistics() {
   };
 
   const fetchActivities = async () => {
-    const { data } = await supabase.from('activities').select('*').eq('user_id', user!.id).order('date', { ascending: true });
-    if (data) setActivities(data as Activity[]);
+    const { data } = await supabase
+      .from('activities').select('*').eq('user_id', user!.id).order('date', { ascending: true });
+    if (data) {
+      const acts = data as Activity[];
+      setActivities(acts);
+      // Auto-select first available type
+      const types = Array.from(new Set(acts.map(a => a.type))) as ActivityType[];
+      if (types.length > 0 && !selectedType) setSelectedType(types[0]);
+    }
   };
 
   const saveProfile = async () => {
@@ -358,19 +375,33 @@ export default function ProfileStatistics() {
     else { toast({ title: 'Profile updated!' }); fetchProfile(); setEditOpen(false); }
   };
 
+  // Available types (only those with at least one activity)
+  const availableTypes = Array.from(new Set(activities.map(a => a.type))) as ActivityType[];
+
+  // Activities filtered by selected type
+  const filtered = selectedType ? activities.filter(a => a.type === selectedType) : [];
+
+  // Graph data grouped by week or month for the selected type
   const graphData = (() => {
-    type G = { label: string; run_km: number; cycle_km: number; swim_km: number; count: number; pushups: number[]; situps: number[]; run_seconds: number[] };
+    type G = {
+      label: string;
+      distance_km: number;
+      count: number;
+      duration: number;
+      pushups: number[];
+      situps: number[];
+      run_seconds: number[];
+    };
     const groups: Record<string, G> = {};
-    activities.forEach(a => {
+    filtered.forEach(a => {
       const d = new Date(a.date);
       const key = graphView === 'week'
         ? (() => { const w = new Date(d); w.setDate(d.getDate() - d.getDay()); return w.toISOString().split('T')[0]; })()
         : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!groups[key]) groups[key] = { label: key, run_km: 0, cycle_km: 0, swim_km: 0, count: 0, pushups: [], situps: [], run_seconds: [] };
+      if (!groups[key]) groups[key] = { label: key, distance_km: 0, count: 0, duration: 0, pushups: [], situps: [], run_seconds: [] };
       groups[key].count++;
-      if (a.type === 'run' && a.distance_km) groups[key].run_km += a.distance_km;
-      if (a.type === 'cycle' && a.distance_km) groups[key].cycle_km += a.distance_km;
-      if (a.type === 'swim' && a.distance_km) groups[key].swim_km += a.distance_km;
+      if (a.distance_km) groups[key].distance_km += a.distance_km;
+      if (a.duration_minutes) groups[key].duration += a.duration_minutes;
       if (a.pushups) groups[key].pushups.push(a.pushups);
       if (a.situps) groups[key].situps.push(a.situps);
       if (a.run_seconds) groups[key].run_seconds.push(a.run_seconds);
@@ -378,17 +409,18 @@ export default function ProfileStatistics() {
     return Object.values(groups).map(g => ({
       ...g,
       avg_pushups: g.pushups.length ? Math.round(g.pushups.reduce((a, b) => a + b) / g.pushups.length) : null,
-      avg_situps: g.situps.length ? Math.round(g.situps.reduce((a, b) => a + b) / g.situps.length) : null,
+      avg_situps:  g.situps.length  ? Math.round(g.situps.reduce((a, b) => a + b)  / g.situps.length)  : null,
       avg_run_sec: g.run_seconds.length ? Math.round(g.run_seconds.reduce((a, b) => a + b) / g.run_seconds.length) : null,
+      avg_duration: g.count ? Math.round(g.duration / g.count) : null,
     }));
   })();
 
+  const typeConfig = selectedType ? TYPE_CONFIG[selectedType] : null;
   const hasAge = profileData?.age != null && profileData.age > 0;
   const hasIpptData = !!(profileData?.ippt_pushups && profileData?.ippt_situps && profileData?.ippt_run_seconds);
   const ippt = hasAge && hasIpptData
     ? calcIppt(profileData!.ippt_pushups!, profileData!.ippt_situps!, profileData!.ippt_run_seconds!, profileData!.age!)
     : null;
-
   const initials = profileData?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
 
   return (
@@ -506,45 +538,35 @@ export default function ProfileStatistics() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {!hasAge && hasIpptData && (
+          {!hasAge && (hasIpptData || !hasIpptData) && (
             <div className="flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 p-3 mb-4 text-sm text-yellow-800">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>Add your age in <button className="underline font-medium" onClick={() => setEditOpen(true)}>Edit Profile</button> to calculate your IPPT score — scoring varies by age group.</span>
-            </div>
-          )}
-          {!hasAge && !hasIpptData && (
-            <div className="flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 p-3 mb-4 text-sm text-yellow-800">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>Add your age and IPPT results via <button className="underline font-medium" onClick={() => setEditOpen(true)}>Edit Profile</button> to see your score calculated automatically.</span>
+              <span>
+                {hasIpptData
+                  ? <>Add your age in <button className="underline font-medium" onClick={() => setEditOpen(true)}>Edit Profile</button> to calculate your IPPT score — scoring varies by age group.</>
+                  : <>Add your age and IPPT results via <button className="underline font-medium" onClick={() => setEditOpen(true)}>Edit Profile</button> to see your score calculated automatically.</>
+                }
+              </span>
             </div>
           )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center rounded-lg border p-3">
-              <div className="text-2xl font-bold text-foreground">{profileData?.ippt_pushups ?? '-'}</div>
-              <div className="text-xs text-muted-foreground">Push-ups</div>
-              {ippt && <div className="text-xs text-primary mt-1">{ippt.pu} pts</div>}
-            </div>
-            <div className="text-center rounded-lg border p-3">
-              <div className="text-2xl font-bold text-foreground">{profileData?.ippt_situps ?? '-'}</div>
-              <div className="text-xs text-muted-foreground">Sit-ups</div>
-              {ippt && <div className="text-xs text-primary mt-1">{ippt.su} pts</div>}
-            </div>
-            <div className="text-center rounded-lg border p-3">
-              <div className="text-2xl font-bold text-foreground">{fmtTime(profileData?.ippt_run_seconds ?? null)}</div>
-              <div className="text-xs text-muted-foreground">2.4km Run</div>
-              {ippt && <div className="text-xs text-primary mt-1">{ippt.run} pts</div>}
-            </div>
-            <div className="text-center rounded-lg border p-3">
-              <div className={`text-2xl font-bold ${ippt?.award === 'Gold' ? 'text-yellow-500' : ippt?.award === 'Fail' ? 'text-red-500' : 'text-foreground'}`}>
-                {ippt?.total ?? '-'}
-              </div>
-              <div className="text-xs text-muted-foreground">Total Score</div>
-              {ippt && (
-                <div className={`text-xs font-semibold mt-1 px-2 py-0.5 rounded-full inline-block ${AWARD_STYLE[ippt.award]}`}>
-                  {ippt.award}
+            {[
+              { label: 'Push-ups', value: profileData?.ippt_pushups ?? '-', pts: ippt?.pu },
+              { label: 'Sit-ups',  value: profileData?.ippt_situps ?? '-',  pts: ippt?.su },
+              { label: '2.4km Run', value: fmtTime(profileData?.ippt_run_seconds ?? null), pts: ippt?.run },
+              { label: 'Total Score', value: ippt?.total ?? '-', pts: undefined, award: ippt?.award },
+            ].map(s => (
+              <div key={s.label} className="text-center rounded-lg border p-3">
+                <div className={`text-2xl font-bold ${'award' in s && s.award === 'Gold' ? 'text-yellow-500' : 'award' in s && s.award === 'Fail' ? 'text-red-500' : 'text-foreground'}`}>
+                  {s.value}
                 </div>
-              )}
-            </div>
+                <div className="text-xs text-muted-foreground">{s.label}</div>
+                {s.pts !== undefined && <div className="text-xs text-primary mt-1">{s.pts} pts</div>}
+                {'award' in s && s.award && (
+                  <div className={`text-xs font-semibold mt-1 px-2 py-0.5 rounded-full inline-block ${AWARD_STYLE[s.award]}`}>{s.award}</div>
+                )}
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -552,50 +574,99 @@ export default function ProfileStatistics() {
       {/* Activity Statistics */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Activity Statistics</CardTitle>
-            {activities.length > 0 && (
-              <Dialog open={graphOpen} onOpenChange={setGraphOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm"><BarChart2 className="h-4 w-4 mr-1" /> View Graphs</Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <div className="flex items-center justify-between pr-6">
-                      <DialogTitle>Activity Graphs</DialogTitle>
-                      <div className="flex rounded-lg border overflow-hidden text-sm">
-                        <button className={`px-3 py-1 ${graphView === 'week' ? 'bg-primary text-primary-foreground' : 'bg-background'}`} onClick={() => setGraphView('week')}>Week</button>
-                        <button className={`px-3 py-1 ${graphView === 'month' ? 'bg-primary text-primary-foreground' : 'bg-background'}`} onClick={() => setGraphView('month')}>Month</button>
-                      </div>
-                    </div>
-                  </DialogHeader>
-                  <div className="space-y-6 pt-2">
+          <CardTitle>Activity Statistics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {activities.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No activities logged yet.</p>
+          ) : (
+            <div className="space-y-4">
+
+              {/* Type selector tabs */}
+              <div className="flex gap-2 flex-wrap">
+                {availableTypes.map(type => {
+                  const cfg = TYPE_CONFIG[type] ?? { label: type, color: '#6b7280' };
+                  const isActive = selectedType === type;
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setSelectedType(type)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                        isActive
+                          ? 'text-white border-transparent'
+                          : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                      }`}
+                      style={isActive ? { backgroundColor: cfg.color, borderColor: cfg.color } : {}}
+                    >
+                      {cfg.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Week / Month toggle */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {filtered.length} session{filtered.length !== 1 ? 's' : ''} logged
+                </p>
+                <div className="flex rounded-lg border overflow-hidden text-sm">
+                  <button className={`px-3 py-1 ${graphView === 'week' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`} onClick={() => setGraphView('week')}>Week</button>
+                  <button className={`px-3 py-1 ${graphView === 'month' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`} onClick={() => setGraphView('month')}>Month</button>
+                </div>
+              </div>
+
+              {/* Graphs — shown based on type */}
+              {typeConfig && (
+                <div className="space-y-6">
+
+                  {/* Frequency — always shown */}
+                  <div>
+                    <p className="text-sm font-medium mb-2">Frequency (sessions)</p>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={graphData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip />
+                        <Bar dataKey="count" name="Sessions" fill={typeConfig.color} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Distance — only for run/cycle/swim */}
+                  {typeConfig.hasDistance && graphData.some(d => d.distance_km > 0) && (
                     <div>
-                      <p className="text-sm font-medium mb-2">Distance by Activity (km)</p>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={graphData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip /><Legend />
-                          <Bar dataKey="run_km" name="Run" fill="#3b82f6" />
-                          <Bar dataKey="cycle_km" name="Cycle" fill="#f97316" />
-                          <Bar dataKey="swim_km" name="Swim" fill="#06b6d4" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium mb-2">Activity Frequency</p>
+                      <p className="text-sm font-medium mb-2">Distance (km)</p>
                       <ResponsiveContainer width="100%" height={180}>
                         <BarChart data={graphData}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="label" tick={{ fontSize: 10 }} />
                           <YAxis tick={{ fontSize: 10 }} />
                           <Tooltip />
-                          <Bar dataKey="count" name="Sessions" fill="#8b5cf6" />
+                          <Bar dataKey="distance_km" name="Distance (km)" fill={typeConfig.color} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
+                  )}
+
+                  {/* Duration — always shown if data exists */}
+                  {graphData.some(d => d.duration > 0) && (
+                    <div>
+                      <p className="text-sm font-medium mb-2">Avg Duration (minutes)</p>
+                      <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={graphData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} />
+                          <Tooltip />
+                          <Bar dataKey="avg_duration" name="Avg Duration (min)" fill={typeConfig.color} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* IPPT training — push-ups & sit-ups */}
+                  {typeConfig.hasIppt && graphData.some(d => d.avg_pushups || d.avg_situps) && (
                     <div>
                       <p className="text-sm font-medium mb-2">IPPT Training — Push-ups & Sit-ups</p>
                       <ResponsiveContainer width="100%" height={200}>
@@ -604,11 +675,15 @@ export default function ProfileStatistics() {
                           <XAxis dataKey="label" tick={{ fontSize: 10 }} />
                           <YAxis tick={{ fontSize: 10 }} />
                           <Tooltip /><Legend />
-                          <Line type="monotone" dataKey="avg_pushups" name="Push-ups" stroke="#3b82f6" dot />
-                          <Line type="monotone" dataKey="avg_situps" name="Sit-ups" stroke="#10b981" dot />
+                          <Line type="monotone" dataKey="avg_pushups" name="Push-ups" stroke="#3b82f6" dot connectNulls />
+                          <Line type="monotone" dataKey="avg_situps"  name="Sit-ups"  stroke="#10b981" dot connectNulls />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
+                  )}
+
+                  {/* Run time — only for run type */}
+                  {selectedType === 'run' && graphData.some(d => d.avg_run_sec) && (
                     <div>
                       <p className="text-sm font-medium mb-2">2.4km Run Time (lower = better)</p>
                       <ResponsiveContainer width="100%" height={200}>
@@ -617,37 +692,15 @@ export default function ProfileStatistics() {
                           <XAxis dataKey="label" tick={{ fontSize: 10 }} />
                           <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtTime(v)} />
                           <Tooltip formatter={(v: number) => fmtTime(v)} />
-                          <Line type="monotone" dataKey="avg_run_sec" name="Run Time" stroke="#f97316" dot />
+                          <Line type="monotone" dataKey="avg_run_sec" name="Run Time" stroke={typeConfig.color} dot connectNulls />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {activities.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No activities logged yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {activities.slice().reverse().slice(0, 5).map(a => (
-                <div key={a.id} className="flex items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <div className="font-medium text-sm text-foreground capitalize">
-                      {a.type}{a.distance_km ? ` · ${a.distance_km}km` : ''}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{a.date}{a.notes ? ` · ${a.notes}` : ''}</div>
-                  </div>
-                  <div className="text-xs text-muted-foreground text-right">
-                    {[a.pushups ? `${a.pushups} PU` : '', a.situps ? `${a.situps} SU` : '', a.run_seconds ? fmtTime(a.run_seconds) : ''].filter(Boolean).join(' · ')}
-                  </div>
+                  )}
+
                 </div>
-              ))}
-              {activities.length > 5 && (
-                <p className="text-xs text-muted-foreground text-center pt-1">Showing last 5 of {activities.length} activities</p>
               )}
+
             </div>
           )}
         </CardContent>
