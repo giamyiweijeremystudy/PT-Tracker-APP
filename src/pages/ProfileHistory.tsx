@@ -8,9 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { User, Trophy, Plus, Pencil, BarChart2, AlertCircle } from 'lucide-react';
+import { User, Trophy, Pencil, BarChart2, AlertCircle } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, BarChart, Bar,
@@ -43,11 +42,6 @@ type ProfileData = {
 };
 
 // ─── IPPT Scoring Tables ──────────────────────────────────────────────────────
-// Source: Official SAF IPPT scoring tables
-// Each row: [reps, ag1, ag2, ag3, ag4, ag5, ag6, ag7, ag8, ag9, ag10, ag11, ag12, ag13, ag14]
-// Age groups: 1=<22, 2=22-24, 3=25-27, 4=28-30, 5=31-33, 6=34-36,
-//             7=37-39, 8=40-42, 9=43-45, 10=46-48, 11=49-51, 12=52-54, 13=55-57, 14=58-60
-// "" means max (25) already reached at fewer reps for that age group
 
 const PUSHUP_RAW = [
   [60,25,"","","","","","","","","","","","",""],
@@ -175,8 +169,6 @@ const SITUP_RAW = [
   [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 ];
 
-// Run table: [time_str, ag1..ag14]
-// time is "MM:SS", value is the max time (≤) for that score
 const RUN_RAW = [
   ["8:30",50,"","","","","","","","","","","","",""],
   ["8:40",49,50,"","","","","","","","","","","",""],
@@ -240,8 +232,6 @@ const RUN_RAW = [
   ["18:20",0,0,0,0,0,0,0,0,0,0,0,0,0,1],
 ];
 
-// ─── Age group lookup ─────────────────────────────────────────────────────────
-// Returns 0-indexed column into the scoring arrays (0 = age group 1 = <22)
 function getAgeGroupIdx(age: number): number {
   if (age < 22) return 0;
   if (age <= 24) return 1;
@@ -256,26 +246,17 @@ function getAgeGroupIdx(age: number): number {
   if (age <= 51) return 10;
   if (age <= 54) return 11;
   if (age <= 57) return 12;
-  return 13; // 58-60
+  return 13;
 }
 
-// Build lookup maps from raw data
-// For pushup/situp: reps → points per age group
 function buildStaticMap(raw: (number | string)[][]): Map<number, number[]> {
   const map = new Map<number, number[]>();
-  // Track last seen value per age group column (for "" = already maxed = 25)
-  const maxed = Array(14).fill(false);
   for (const row of raw) {
     const reps = row[0] as number;
     const pts: number[] = [];
     for (let i = 1; i <= 14; i++) {
       const v = row[i];
-      if (v === "" || v === undefined) {
-        // blank at top = 25 (age group already maxed at fewer reps)
-        pts.push(25);
-      } else {
-        pts.push(v as number);
-      }
+      pts.push(v === "" || v === undefined ? 25 : v as number);
     }
     map.set(reps, pts);
   }
@@ -285,13 +266,11 @@ function buildStaticMap(raw: (number | string)[][]): Map<number, number[]> {
 const PUSHUP_MAP = buildStaticMap(PUSHUP_RAW);
 const SITUP_MAP = buildStaticMap(SITUP_RAW);
 
-// Run: time string → seconds
 function timeToSec(t: string): number {
   const [m, s] = t.split(':').map(Number);
   return m * 60 + s;
 }
 
-// Build run lookup: sorted array of [maxSec, points[14]]
 const RUN_TABLE: [number, number[]][] = RUN_RAW.map(row => {
   const secs = timeToSec(row[0] as string);
   const pts: number[] = [];
@@ -309,7 +288,6 @@ function getStaticPts(map: Map<number, number[]>, reps: number, ageIdx: number):
 }
 
 function getRunPts(seconds: number, ageIdx: number): number {
-  // Round up to nearest 10 seconds
   const rounded = Math.ceil(seconds / 10) * 10;
   for (const [maxSec, pts] of RUN_TABLE) {
     if (rounded <= maxSec) return pts[ageIdx] ?? 0;
@@ -355,15 +333,9 @@ export default function ProfileStatistics() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [editOpen, setEditOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphView, setGraphView] = useState<'week' | 'month'>('month');
   const [editForm, setEditForm] = useState<Partial<ProfileData>>({});
-  const [actForm, setActForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    type: 'run', distance_km: '', duration_minutes: '',
-    pushups: '', situps: '', run_min: '', run_sec: '', notes: '',
-  });
 
   useEffect(() => { if (user) { fetchProfile(); fetchActivities(); } }, [user]);
 
@@ -384,28 +356,6 @@ export default function ProfileStatistics() {
     const { error } = await supabase.from('profiles').update(editForm).eq('id', user!.id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
     else { toast({ title: 'Profile updated!' }); fetchProfile(); setEditOpen(false); }
-  };
-
-  const saveActivity = async () => {
-    const run_seconds = (actForm.run_min || actForm.run_sec)
-      ? parseInt(actForm.run_min || '0') * 60 + parseInt(actForm.run_sec || '0') : null;
-    const { error } = await supabase.from('activities').insert({
-      user_id: user!.id, date: actForm.date, type: actForm.type,
-      distance_km: actForm.distance_km ? parseFloat(actForm.distance_km) : null,
-      duration_minutes: actForm.duration_minutes ? parseInt(actForm.duration_minutes) : null,
-      pushups: actForm.pushups ? parseInt(actForm.pushups) : null,
-      situps: actForm.situps ? parseInt(actForm.situps) : null,
-      run_seconds, notes: actForm.notes,
-    });
-    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
-    else {
-      toast({ title: 'Activity logged!' });
-      const prev = activities.length;
-      await fetchActivities();
-      setAddOpen(false);
-      if (prev === 0) setGraphOpen(true);
-      setActForm({ date: new Date().toISOString().split('T')[0], type: 'run', distance_km: '', duration_minutes: '', pushups: '', situps: '', run_min: '', run_sec: '', notes: '' });
-    }
   };
 
   const graphData = (() => {
@@ -434,7 +384,7 @@ export default function ProfileStatistics() {
   })();
 
   const hasAge = profileData?.age != null && profileData.age > 0;
-  const hasIpptData = profileData?.ippt_pushups && profileData?.ippt_situps && profileData?.ippt_run_seconds;
+  const hasIpptData = !!(profileData?.ippt_pushups && profileData?.ippt_situps && profileData?.ippt_run_seconds);
   const ippt = hasAge && hasIpptData
     ? calcIppt(profileData!.ippt_pushups!, profileData!.ippt_situps!, profileData!.ippt_run_seconds!, profileData!.age!)
     : null;
@@ -556,7 +506,6 @@ export default function ProfileStatistics() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Age missing warning */}
           {!hasAge && hasIpptData && (
             <div className="flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 p-3 mb-4 text-sm text-yellow-800">
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -569,7 +518,6 @@ export default function ProfileStatistics() {
               <span>Add your age and IPPT results via <button className="underline font-medium" onClick={() => setEditOpen(true)}>Edit Profile</button> to see your score calculated automatically.</span>
             </div>
           )}
-
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center rounded-lg border p-3">
               <div className="text-2xl font-bold text-foreground">{profileData?.ippt_pushups ?? '-'}</div>
@@ -601,154 +549,87 @@ export default function ProfileStatistics() {
         </CardContent>
       </Card>
 
-      {/* Activity Tracking */}
+      {/* Activity Statistics */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Activity Tracking</CardTitle>
-            <div className="flex gap-2">
-              {activities.length > 0 && (
-                <Dialog open={graphOpen} onOpenChange={setGraphOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="sm"><BarChart2 className="h-4 w-4 mr-1" /> View Graphs</Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                      <div className="flex items-center justify-between pr-6">
-                        <DialogTitle>Activity Graphs</DialogTitle>
-                        <div className="flex rounded-lg border overflow-hidden text-sm">
-                          <button className={`px-3 py-1 ${graphView === 'week' ? 'bg-primary text-primary-foreground' : 'bg-background'}`} onClick={() => setGraphView('week')}>Week</button>
-                          <button className={`px-3 py-1 ${graphView === 'month' ? 'bg-primary text-primary-foreground' : 'bg-background'}`} onClick={() => setGraphView('month')}>Month</button>
-                        </div>
-                      </div>
-                    </DialogHeader>
-                    <div className="space-y-6 pt-2">
-                      <div>
-                        <p className="text-sm font-medium mb-2">Distance by Activity (km)</p>
-                        <ResponsiveContainer width="100%" height={200}>
-                          <BarChart data={graphData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} />
-                            <Tooltip /><Legend />
-                            <Bar dataKey="run_km" name="Run" fill="#3b82f6" />
-                            <Bar dataKey="cycle_km" name="Cycle" fill="#f97316" />
-                            <Bar dataKey="swim_km" name="Swim" fill="#06b6d4" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium mb-2">Activity Frequency</p>
-                        <ResponsiveContainer width="100%" height={180}>
-                          <BarChart data={graphData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} />
-                            <Tooltip />
-                            <Bar dataKey="count" name="Sessions" fill="#8b5cf6" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium mb-2">IPPT Training — Push-ups & Sit-ups</p>
-                        <ResponsiveContainer width="100%" height={200}>
-                          <LineChart data={graphData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} />
-                            <Tooltip /><Legend />
-                            <Line type="monotone" dataKey="avg_pushups" name="Push-ups" stroke="#3b82f6" dot />
-                            <Line type="monotone" dataKey="avg_situps" name="Sit-ups" stroke="#10b981" dot />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium mb-2">2.4km Run Time (lower = better)</p>
-                        <ResponsiveContainer width="100%" height={200}>
-                          <LineChart data={graphData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtTime(v)} />
-                            <Tooltip formatter={(v: number) => fmtTime(v)} />
-                            <Line type="monotone" dataKey="avg_run_sec" name="Run Time" stroke="#f97316" dot />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-
-              <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <CardTitle>Activity Statistics</CardTitle>
+            {activities.length > 0 && (
+              <Dialog open={graphOpen} onOpenChange={setGraphOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Log</Button>
+                  <Button variant="outline" size="sm"><BarChart2 className="h-4 w-4 mr-1" /> View Graphs</Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader><DialogTitle>Log Activity</DialogTitle></DialogHeader>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label>Date</Label>
-                        <Input type="date" value={actForm.date} onChange={e => setActForm(f => ({ ...f, date: e.target.value }))} />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Type</Label>
-                        <Select value={actForm.type} onValueChange={v => setActForm(f => ({ ...f, type: v }))}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="run">Run</SelectItem>
-                            <SelectItem value="cycle">Cycle</SelectItem>
-                            <SelectItem value="swim">Swim</SelectItem>
-                            <SelectItem value="gym">Gym</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <div className="flex items-center justify-between pr-6">
+                      <DialogTitle>Activity Graphs</DialogTitle>
+                      <div className="flex rounded-lg border overflow-hidden text-sm">
+                        <button className={`px-3 py-1 ${graphView === 'week' ? 'bg-primary text-primary-foreground' : 'bg-background'}`} onClick={() => setGraphView('week')}>Week</button>
+                        <button className={`px-3 py-1 ${graphView === 'month' ? 'bg-primary text-primary-foreground' : 'bg-background'}`} onClick={() => setGraphView('month')}>Month</button>
                       </div>
                     </div>
-                    {['run', 'cycle', 'swim'].includes(actForm.type) && (
-                      <div className="space-y-1">
-                        <Label>Distance (km)</Label>
-                        <Input type="number" step="0.1" value={actForm.distance_km} onChange={e => setActForm(f => ({ ...f, distance_km: e.target.value }))} />
-                      </div>
-                    )}
-                    <div className="space-y-1">
-                      <Label>Duration (minutes)</Label>
-                      <Input type="number" value={actForm.duration_minutes} onChange={e => setActForm(f => ({ ...f, duration_minutes: e.target.value }))} />
+                  </DialogHeader>
+                  <div className="space-y-6 pt-2">
+                    <div>
+                      <p className="text-sm font-medium mb-2">Distance by Activity (km)</p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={graphData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} />
+                          <Tooltip /><Legend />
+                          <Bar dataKey="run_km" name="Run" fill="#3b82f6" />
+                          <Bar dataKey="cycle_km" name="Cycle" fill="#f97316" />
+                          <Bar dataKey="swim_km" name="Swim" fill="#06b6d4" />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
-                    <div className="border-t pt-3">
-                      <p className="text-sm font-medium mb-2">IPPT Training (optional)</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label>Push-ups</Label>
-                          <Input type="number" value={actForm.pushups} onChange={e => setActForm(f => ({ ...f, pushups: e.target.value }))} />
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Sit-ups</Label>
-                          <Input type="number" value={actForm.situps} onChange={e => setActForm(f => ({ ...f, situps: e.target.value }))} />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          <Label>2.4km Run Time (MM : SS)</Label>
-                          <div className="flex gap-2">
-                            <Input type="number" placeholder="MM" value={actForm.run_min} onChange={e => setActForm(f => ({ ...f, run_min: e.target.value }))} />
-                            <Input type="number" placeholder="SS" value={actForm.run_sec} onChange={e => setActForm(f => ({ ...f, run_sec: e.target.value }))} />
-                          </div>
-                        </div>
-                      </div>
+                    <div>
+                      <p className="text-sm font-medium mb-2">Activity Frequency</p>
+                      <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={graphData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} />
+                          <Tooltip />
+                          <Bar dataKey="count" name="Sessions" fill="#8b5cf6" />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
-                    <div className="space-y-1">
-                      <Label>Notes</Label>
-                      <Input value={actForm.notes} onChange={e => setActForm(f => ({ ...f, notes: e.target.value }))} />
+                    <div>
+                      <p className="text-sm font-medium mb-2">IPPT Training — Push-ups & Sit-ups</p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={graphData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} />
+                          <Tooltip /><Legend />
+                          <Line type="monotone" dataKey="avg_pushups" name="Push-ups" stroke="#3b82f6" dot />
+                          <Line type="monotone" dataKey="avg_situps" name="Sit-ups" stroke="#10b981" dot />
+                        </LineChart>
+                      </ResponsiveContainer>
                     </div>
-                    <Button className="w-full" onClick={saveActivity}>Save Activity</Button>
+                    <div>
+                      <p className="text-sm font-medium mb-2">2.4km Run Time (lower = better)</p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={graphData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtTime(v)} />
+                          <Tooltip formatter={(v: number) => fmtTime(v)} />
+                          <Line type="monotone" dataKey="avg_run_sec" name="Run Time" stroke="#f97316" dot />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </DialogContent>
               </Dialog>
-            </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
           {activities.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No activities logged yet. Hit Log to get started.</p>
+            <p className="text-sm text-muted-foreground text-center py-8">No activities logged yet.</p>
           ) : (
             <div className="space-y-2">
               {activities.slice().reverse().slice(0, 5).map(a => (
