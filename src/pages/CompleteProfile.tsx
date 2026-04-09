@@ -77,6 +77,7 @@ export default function CompleteProfile() {
                   required
                 >
                   <option value="">Select rank</option>
+                  <option value="ME1T">ME1T</option>
                   {RANKS.map(r => (
                     <option key={r} value={r}>{r}</option>
                   ))}
