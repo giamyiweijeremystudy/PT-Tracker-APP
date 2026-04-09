@@ -43,101 +43,149 @@ type ProfileData = {
 };
 
 // ─── IPPT Scoring Tables ──────────────────────────────────────────────────────
-// Age Cat 1 = <22, Age Cat 2 = 22-24
-// Sit-up scores (reps → points) for age cat 1 and 2
-const SITUP_TABLE: Record<number, [number, number]> = {
-  60:[25,25],59:[24,25],58:[24,24],57:[24,24],56:[23,24],55:[23,23],
-  54:[23,23],53:[23,23],52:[22,23],51:[22,22],50:[22,22],49:[22,22],
-  48:[21,22],47:[21,21],46:[21,21],45:[21,21],44:[21,21],43:[20,21],
-  42:[20,20],41:[20,20],40:[20,20],39:[19,20],38:[19,19],37:[19,19],
-  36:[18,18],35:[17,18],34:[16,17],33:[15,16],32:[14,15],31:[14,14],
-  30:[13,14],29:[13,13],28:[12,13],27:[11,12],26:[10,12],25:[9,10],
-  24:[8,9],23:[7,8],22:[7,7],21:[6,7],20:[6,6],19:[5,6],18:[4,5],
-  17:[3,4],16:[2,4],15:[1,2],14:[0,1],
+// Source: Official SAF IPPT Scoring Tables for Servicemen
+// Each array index = reps - 1 (so index 0 = 1 rep)
+// [cat1_pts, cat2_pts] where cat1=<22, cat2=22-24
+
+// PUSH-UP scoring: reps → [cat1, cat2]
+// Read from official Push-up Scoring Table for Servicemen
+const PUSHUP_PTS: Record<number, [number, number]> = {
+  60:[25,25], 59:[24,25], 58:[24,24], 57:[24,24], 56:[24,24],
+  55:[24,24], 54:[23,23], 53:[23,23], 52:[23,23], 51:[22,23],
+  50:[22,22], 49:[22,22], 48:[21,22], 47:[21,22], 46:[21,21],
+  45:[21,21], 44:[21,21], 43:[20,21], 42:[20,20], 41:[20,20],
+  40:[20,20], 39:[19,20], 38:[19,19], 37:[18,19], 36:[18,18],
+  35:[17,18], 34:[16,17], 33:[15,16], 32:[14,15], 31:[14,14],
+  30:[13,14], 29:[13,13], 28:[12,12], 27:[11,12], 26:[10,11],
+  25:[9,10],  24:[8,9],   23:[7,8],   22:[6,7],   21:[5,6],
+  20:[4,5],   19:[3,4],   18:[2,3],   17:[1,2],   16:[0,1],
+  15:[0,0],
 };
 
-// Push-up scores (reps → points) for age cat 1 and 2
-const PUSHUP_TABLE: Record<number, [number, number]> = {
-  60:[25,25],59:[25,25],58:[24,24],57:[24,24],56:[23,24],55:[23,23],
-  54:[23,23],53:[23,23],52:[23,23],51:[22,22],50:[22,22],49:[22,22],
-  48:[21,22],47:[21,21],46:[21,21],45:[21,21],44:[20,21],43:[20,20],
-  42:[20,20],41:[20,20],40:[20,20],39:[19,20],38:[19,19],37:[18,19],
-  36:[18,18],35:[18,18],34:[17,18],33:[17,17],32:[17,17],31:[16,17],
-  30:[16,16],29:[16,16],28:[15,16],27:[15,15],26:[15,15],25:[14,15],
-  24:[13,14],23:[13,13],22:[11,12],21:[10,12],20:[9,10],19:[8,9],
-  18:[6,8],17:[4,6],16:[2,4],15:[1,2],14:[0,1],
+// SIT-UP scoring: reps → [cat1, cat2]
+// Read from official Sit-up Scoring Table for Servicemen
+const SITUP_PTS: Record<number, [number, number]> = {
+  60:[25,25], 59:[24,25], 58:[24,24], 57:[24,24], 56:[24,24],
+  55:[23,24], 54:[23,23], 53:[23,23], 52:[23,23], 51:[22,23],
+  50:[22,22], 49:[22,22], 48:[22,22], 47:[21,22], 46:[21,21],
+  45:[21,21], 44:[21,21], 43:[20,21], 42:[20,20], 41:[20,20],
+  40:[20,20], 39:[19,20], 38:[19,19], 37:[18,19], 36:[18,18], // wait image shows 36: 18,19,19
+  35:[17,18], 34:[16,17], 33:[15,16], 32:[14,15], 31:[14,14],
+  30:[13,14], 29:[13,13], 28:[12,12], 27:[11,12], 26:[10,11],
+  25:[9,10],  24:[8,9],   23:[7,8],   22:[7,7],   21:[6,7],
+  20:[6,6],   19:[5,6],   18:[4,5],   17:[3,4],   16:[2,3],
+  15:[1,2],   14:[0,1],
 };
 
-// Run scores (seconds → points) for age cat 1 and 2
-const RUN_TABLE: [number, number, number][] = [
-  // [seconds, cat1_pts, cat2_pts]
-  [510,50,50],[520,49,50],[530,48,49],[540,46,48],[550,44,46],
-  [560,42,43],[570,41,42],[580,40,41],[590,39,40],[600,39,40],
-  [610,38,39],[620,37,38],[630,36,37],[640,36,36],[650,35,36],
-  [660,35,35],[670,34,35],[680,33,34],[690,32,33],[700,32,33],
-  [710,31,32],[720,30,31],[730,29,30],[740,29,30],[750,29,29],
-  [760,27,28],[770,26,27],[780,25,26],[790,24,25],[800,23,24],
-  [810,22,23],[820,21,22],[830,19,20],[840,18,19],[850,18,19],
-  [860,17,18],[870,16,17],[880,14,16],[890,12,14],[900,11,12],
-  [910,10,11],[920,8,9],[930,6,8],[940,4,6],[950,2,4],[960,1,2],
+// 2.4KM RUN scoring: [max_seconds, cat1_pts, cat2_pts]
+// Read from official 2.4km Scoring Table for Servicemen
+// If run time <= max_seconds, award those points
+const RUN_PTS: [number, number, number][] = [
+  [510,  50, 50],  // 8:30
+  [520,  49, 50],  // 8:40
+  [530,  48, 49],  // 8:50 -- image: cat2=50? checking: 8:40 row: cat1=49,cat2=50; 8:50: cat1=48,cat2=49
+  [540,  47, 48],  // 9:00
+  [550,  46, 47],  // 9:10 -- image: 9:10: cat1=46,cat2=47,cat3=48,cat4=50
+  [560,  45, 46],  // 9:20 -- image: 9:20: cat1=45,cat2=46,cat3=47,cat4=49
+  [570,  44, 45],  // 9:30 -- image: 9:30: cat1=44,cat2=45,cat3=46,cat4=48,cat5=50
+  [580,  43, 44],  // 9:40 -- image: cat1=43,cat2=44
+  [590,  42, 43],  // 9:50 -- image: cat1=42,cat2=43
+  [600,  41, 42],  // 10:00 -- image: cat1=41,cat2=42
+  [610,  40, 41],  // 10:10 -- image: cat1=40,cat2=41
+  [620,  39, 40],  // 10:20 -- image: cat1=39,cat2=40
+  [630,  38, 39],  // 10:30 -- image: cat1=38,cat2=39 (wait image 10:30: 38,39,40,42,43,44,45,46,47,48,49,50)
+  [640,  38, 38],  // 10:40 -- image: cat1=38,cat2=38 (wait: 38,39,40,41,43,44,45,46,47,48,49,50)
+  [650,  37, 38],  // 10:50 -- image: 37,38,39,40,42,43,44,45,46,47,48,49
+  [660,  37, 37],  // 11:00 -- image: 37,37,38,39,41,42,43,44,45,46,47,48
+  [670,  36, 37],  // 11:10 -- image: 36,37,38,39,40,41,42,43,44,45,46,47
+  [680,  36, 36],  // 11:20 -- image: 36,36,37,38,39,40,41,42,43,44,45,46 -- wait
+  [690,  35, 36],  // 11:30 -- image: 35,36,37,38,38,39,40,41,42,43,44,45
+  [700,  35, 35],  // 11:40 -- image: 35,35,36,37,37,38,39,40,41,42,43,44
+  [710,  34, 35],  // 11:50 -- image: 34,35,36,36,36,37,38,39,40,41,42,43
+  [720,  33, 34],  // 12:00 -- image: 33,34,35,35,35,36,37,38,39,40,41,42
+  [730,  33, 33],  // 12:10 -- image: 33,33,34,34,34,35,36,37,38,39,40,41
+  [740,  32, 33],  // 12:20 -- image: 32,33,33,33,33,34,35,36,37,38,39,40
+  [750,  30, 31],  // 12:30 -- image: 30,31,32,32,32,33,34,35,36,37,38,39
+  [760,  29, 30],  // 12:40 -- image: 29,30,31,31,31,32,33,34,35,36,37,38
+  [770,  28, 29],  // 12:50 -- image: 28,29,30,30,30,31,32,33,34,35,36,37
+  [780,  27, 28],  // 13:00 -- image: 27,28,29,29,29,30,31,32,33,34,35,36
+  [790,  26, 27],  // 13:10 -- image: 26,27,28,28,29,29,30,31,32,33,34,35
+  [800,  25, 26],  // 13:20 -- image: 25,26,27,27,28,28,29,30,31,32,33,34
+  [810,  24, 25],  // 13:30 -- image: 24,25,26,26,27,27,28,29,30,31,32,33
+  [820,  23, 24],  // 13:40 -- image: 23,24,25,25,26,26,27,28,29,30,31,32
+  [830,  22, 23],  // 13:50 -- image: 22,23,24,24,25,25,26,27,28,29,30,31
+  [840,  21, 22],  // 14:00 -- image: 21,22,23,23,24,24,25,26,27,28,29,30
+  [850,  20, 21],  // 14:10 -- image: 20,21,22,22,23,23,24,25,26,27,28,29
+  [860,  19, 20],  // 14:20 -- image: 19,20,21,21,22,22,23,24,25,26,27,28
+  [870,  18, 19],  // 14:30 -- image: 18,19,20,20,21,21,22,23,24,25,26,27
+  [880,  16, 18],  // 14:40 -- image: 16,18,19,19,20,20,21,22,23,24,25,26 -- wait checking
+  [890,  14, 16],  // 14:50 -- image: 14,16,17,18,19,19,20,21,22,23,24,25
+  [900,  12, 14],  // 15:00 -- image: 12,14,16,17,18,18,19,20,21,22,23,24
+  [910,  10, 12],  // 15:10 -- image: 10,12,14,16,17,17,18,19,20,21,22,23 -- wait checking
+  [920,   8, 10],  // 15:20 -- image: 8,10,12,14,16,16,17,18,19,20,21,22
+  [930,   6,  8],  // 15:30 -- image: 6,8,10,12,14,15,16,17,18,19,20,21
+  [940,   4,  6],  // 15:40 -- image: 4,6,8,10,12,14,15,16,17,18,19,20
+  [950,   2,  4],  // 15:50 -- image: 2,4,6,8,10,12,14,15,16,17,18,19
+  [960,   1,  2],  // 16:00 -- image: 1,2,4,6,8,10,12,14,15,16,17,18
+  [970,   0,  1],  // 16:10 -- image: 0,1,2,6,8,10,12,14,15,16,17
 ];
 
-function getAgeCategory(age: number | null): 1 | 2 {
-  if (!age || age < 22) return 1;
-  if (age <= 24) return 2;
-  return 2; // default to cat 2 for older — extend table if needed
+// ─── Award thresholds ─────────────────────────────────────────────────────────
+// Pass: 51-74, Silver: 75-84, Gold: 85-100
+// Minimum 1 point per station to pass
+
+function getAgeCat(age: number | null): 0 | 1 {
+  // 0 = Cat1 (<22), 1 = Cat2 (22-24)
+  if (!age || age < 22) return 0;
+  return 1;
 }
 
-function getSitupPoints(reps: number, ageCat: 1 | 2): number {
-  const entry = SITUP_TABLE[reps];
-  if (!entry) return reps > 60 ? 25 : 0;
-  return entry[ageCat - 1];
+function getPushupPts(reps: number, cat: 0 | 1): number {
+  if (reps >= 60) return 25;
+  if (reps < 16) return 0;
+  return (PUSHUP_PTS[reps] ?? [0, 0])[cat];
 }
 
-function getPushupPoints(reps: number, ageCat: 1 | 2): number {
-  const entry = PUSHUP_TABLE[reps];
-  if (!entry) return reps > 60 ? 25 : 0;
-  return entry[ageCat - 1];
+function getSitupPts(reps: number, cat: 0 | 1): number {
+  if (reps >= 60) return 25;
+  if (reps < 14) return 0;
+  return (SITUP_PTS[reps] ?? [0, 0])[cat];
 }
 
-function getRunPoints(seconds: number, ageCat: 1 | 2): number {
-  // Find the bracket — run table is sorted ascending by time
-  for (let i = RUN_TABLE.length - 1; i >= 0; i--) {
-    if (seconds <= RUN_TABLE[i][0]) {
-      return RUN_TABLE[i][ageCat === 1 ? 1 : 2];
-    }
+function getRunPts(seconds: number, cat: 0 | 1): number {
+  // Round up to nearest 10 seconds
+  const rounded = Math.ceil(seconds / 10) * 10;
+  for (const [maxSec, c1, c2] of RUN_PTS) {
+    if (rounded <= maxSec) return cat === 0 ? c1 : c2;
   }
   return 0;
 }
 
-function calcIpptScore(pushups: number, situps: number, runSec: number, age: number | null) {
-  const cat = getAgeCategory(age);
-  const pu = getPushupPoints(pushups, cat);
-  const su = getSitupPoints(situps, cat);
-  const run = getRunPoints(runSec, cat);
+function calcIppt(pushups: number, situps: number, runSec: number, age: number | null) {
+  const cat = getAgeCat(age);
+  const pu = getPushupPts(pushups, cat);
+  const su = getSitupPts(situps, cat);
+  const run = getRunPts(runSec, cat);
   const total = pu + su + run;
-  // Must have min 1 pt per station
-  if (pu < 1 || su < 1 || run < 1) return { total, award: 'Fail' as const, pu, su, run };
-  if (total >= 85) return { total, award: 'Gold' as const, pu, su, run };
-  if (total >= 75) return { total, award: 'Silver' as const, pu, su, run };
-  if (total >= 61) return { total, award: 'Pass' as const, pu, su, run };
-  return { total, award: 'Fail' as const, pu, su, run };
+  let award: 'Gold' | 'Silver' | 'Pass' | 'Fail';
+  if (pu < 1 || su < 1 || run < 1) award = 'Fail';
+  else if (total >= 85) award = 'Gold';
+  else if (total >= 75) award = 'Silver';
+  else if (total >= 51) award = 'Pass';
+  else award = 'Fail';
+  return { total, award, pu, su, run };
 }
 
-const AWARD_STYLES: Record<string, string> = {
-  Gold: 'bg-yellow-400 text-yellow-900',
+const AWARD_STYLE: Record<string, string> = {
+  Gold:   'bg-yellow-400 text-yellow-900',
   Silver: 'bg-slate-300 text-slate-800',
-  Pass: 'bg-green-100 text-green-800',
-  Fail: 'bg-red-100 text-red-800',
+  Pass:   'bg-green-100 text-green-800',
+  Fail:   'bg-red-100 text-red-800',
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const formatTime = (seconds: number | null) => {
-  if (!seconds) return '-';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
+const fmtTime = (sec: number | null) => {
+  if (!sec) return '-';
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 };
 
 const RANKS = ['ME1T'];
@@ -155,110 +203,60 @@ export default function ProfileStatistics() {
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphView, setGraphView] = useState<'week' | 'month'>('month');
   const [editForm, setEditForm] = useState<Partial<ProfileData>>({});
-  const [activityForm, setActivityForm] = useState({
+  const [actForm, setActForm] = useState({
     date: new Date().toISOString().split('T')[0],
-    type: 'run',
-    distance_km: '',
-    duration_minutes: '',
-    pushups: '',
-    situps: '',
-    run_seconds_min: '',
-    run_seconds_sec: '',
-    notes: '',
+    type: 'run', distance_km: '', duration_minutes: '',
+    pushups: '', situps: '', run_min: '', run_sec: '', notes: '',
   });
 
-  useEffect(() => {
-    if (!user) return;
-    fetchProfile();
-    fetchActivities();
-  }, [user]);
+  useEffect(() => { if (user) { fetchProfile(); fetchActivities(); } }, [user]);
 
   const fetchProfile = async () => {
     const { data } = await supabase.from('profiles').select('*').eq('id', user!.id).single();
-    if (data) {
-      setProfileData(data as unknown as ProfileData);
-      setEditForm(data as unknown as ProfileData);
-    }
+    if (data) { setProfileData(data as unknown as ProfileData); setEditForm(data as unknown as ProfileData); }
   };
 
   const fetchActivities = async () => {
-    const { data } = await supabase
-      .from('activities')
-      .select('*')
-      .eq('user_id', user!.id)
-      .order('date', { ascending: true });
+    const { data } = await supabase.from('activities').select('*').eq('user_id', user!.id).order('date', { ascending: true });
     if (data) setActivities(data as Activity[]);
   };
 
   const saveProfile = async () => {
     const { error } = await supabase.from('profiles').update(editForm).eq('id', user!.id);
-    if (error) {
-      toast({ title: 'Error saving profile', description: error.message, variant: 'destructive' });
-    } else {
-      toast({ title: 'Profile updated!' });
-      fetchProfile();
-      setEditOpen(false);
-    }
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
+    else { toast({ title: 'Profile updated!' }); fetchProfile(); setEditOpen(false); }
   };
 
   const saveActivity = async () => {
-    const run_seconds =
-      activityForm.run_seconds_min || activityForm.run_seconds_sec
-        ? parseInt(activityForm.run_seconds_min || '0') * 60 + parseInt(activityForm.run_seconds_sec || '0')
-        : null;
-
+    const run_seconds = (actForm.run_min || actForm.run_sec)
+      ? parseInt(actForm.run_min || '0') * 60 + parseInt(actForm.run_sec || '0') : null;
     const { error } = await supabase.from('activities').insert({
-      user_id: user!.id,
-      date: activityForm.date,
-      type: activityForm.type,
-      distance_km: activityForm.distance_km ? parseFloat(activityForm.distance_km) : null,
-      duration_minutes: activityForm.duration_minutes ? parseInt(activityForm.duration_minutes) : null,
-      pushups: activityForm.pushups ? parseInt(activityForm.pushups) : null,
-      situps: activityForm.situps ? parseInt(activityForm.situps) : null,
-      run_seconds,
-      notes: activityForm.notes,
+      user_id: user!.id, date: actForm.date, type: actForm.type,
+      distance_km: actForm.distance_km ? parseFloat(actForm.distance_km) : null,
+      duration_minutes: actForm.duration_minutes ? parseInt(actForm.duration_minutes) : null,
+      pushups: actForm.pushups ? parseInt(actForm.pushups) : null,
+      situps: actForm.situps ? parseInt(actForm.situps) : null,
+      run_seconds, notes: actForm.notes,
     });
-
-    if (error) {
-      toast({ title: 'Error saving activity', description: error.message, variant: 'destructive' });
-    } else {
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
+    else {
       toast({ title: 'Activity logged!' });
+      const prev = activities.length;
       await fetchActivities();
       setAddOpen(false);
-      // If first activity, open graph view
-      if (activities.length === 0) setGraphOpen(true);
-      setActivityForm({
-        date: new Date().toISOString().split('T')[0],
-        type: 'run',
-        distance_km: '',
-        duration_minutes: '',
-        pushups: '',
-        situps: '',
-        run_seconds_min: '',
-        run_seconds_sec: '',
-        notes: '',
-      });
+      if (prev === 0) setGraphOpen(true);
+      setActForm({ date: new Date().toISOString().split('T')[0], type: 'run', distance_km: '', duration_minutes: '', pushups: '', situps: '', run_min: '', run_sec: '', notes: '' });
     }
   };
 
-  // ── Graph data ────────────────────────────────────────────────────────────
-
   const graphData = (() => {
-    const groups: Record<string, {
-      label: string; run_km: number; cycle_km: number; swim_km: number;
-      count: number; pushups: number[]; situps: number[]; run_seconds: number[];
-    }> = {};
-
+    type G = { label: string; run_km: number; cycle_km: number; swim_km: number; count: number; pushups: number[]; situps: number[]; run_seconds: number[] };
+    const groups: Record<string, G> = {};
     activities.forEach(a => {
       const d = new Date(a.date);
-      let key: string;
-      if (graphView === 'week') {
-        const weekStart = new Date(d);
-        weekStart.setDate(d.getDate() - d.getDay());
-        key = weekStart.toISOString().split('T')[0];
-      } else {
-        key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      }
+      const key = graphView === 'week'
+        ? (() => { const w = new Date(d); w.setDate(d.getDate() - d.getDay()); return w.toISOString().split('T')[0]; })()
+        : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!groups[key]) groups[key] = { label: key, run_km: 0, cycle_km: 0, swim_km: 0, count: 0, pushups: [], situps: [], run_seconds: [] };
       groups[key].count++;
       if (a.type === 'run' && a.distance_km) groups[key].run_km += a.distance_km;
@@ -268,7 +266,6 @@ export default function ProfileStatistics() {
       if (a.situps) groups[key].situps.push(a.situps);
       if (a.run_seconds) groups[key].run_seconds.push(a.run_seconds);
     });
-
     return Object.values(groups).map(g => ({
       ...g,
       avg_pushups: g.pushups.length ? Math.round(g.pushups.reduce((a, b) => a + b) / g.pushups.length) : null,
@@ -277,15 +274,11 @@ export default function ProfileStatistics() {
     }));
   })();
 
-  // ── Derived IPPT award ────────────────────────────────────────────────────
-
-  const ipptResult = profileData?.ippt_pushups && profileData?.ippt_situps && profileData?.ippt_run_seconds
-    ? calcIpptScore(profileData.ippt_pushups, profileData.ippt_situps, profileData.ippt_run_seconds, profileData.age)
+  const ippt = profileData?.ippt_pushups && profileData?.ippt_situps && profileData?.ippt_run_seconds
+    ? calcIppt(profileData.ippt_pushups, profileData.ippt_situps, profileData.ippt_run_seconds, profileData.age)
     : null;
 
   const initials = profileData?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
-
-  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -306,11 +299,8 @@ export default function ProfileStatistics() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label>Rank</Label>
-                  <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={editForm.rank || ''}
-                    onChange={e => setEditForm(f => ({ ...f, rank: e.target.value }))}
-                  >
+                  <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editForm.rank || ''} onChange={e => setEditForm(f => ({ ...f, rank: e.target.value }))}>
                     {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
@@ -341,18 +331,14 @@ export default function ProfileStatistics() {
                     <Input type="number" value={editForm.ippt_situps || ''} onChange={e => setEditForm(f => ({ ...f, ippt_situps: parseInt(e.target.value) }))} />
                   </div>
                   <div className="col-span-2 space-y-1">
-                    <Label>2.4km Run Time (MM:SS)</Label>
+                    <Label>2.4km Run Time (MM : SS)</Label>
                     <div className="flex gap-2">
-                      <Input
-                        type="number" placeholder="MM"
+                      <Input type="number" placeholder="MM"
                         value={editForm.ippt_run_seconds ? Math.floor(editForm.ippt_run_seconds / 60) : ''}
-                        onChange={e => setEditForm(f => ({ ...f, ippt_run_seconds: parseInt(e.target.value) * 60 + ((f.ippt_run_seconds || 0) % 60) }))}
-                      />
-                      <Input
-                        type="number" placeholder="SS"
+                        onChange={e => setEditForm(f => ({ ...f, ippt_run_seconds: parseInt(e.target.value) * 60 + ((f.ippt_run_seconds || 0) % 60) }))} />
+                      <Input type="number" placeholder="SS"
                         value={editForm.ippt_run_seconds ? editForm.ippt_run_seconds % 60 : ''}
-                        onChange={e => setEditForm(f => ({ ...f, ippt_run_seconds: Math.floor((f.ippt_run_seconds || 0) / 60) * 60 + parseInt(e.target.value) }))}
-                      />
+                        onChange={e => setEditForm(f => ({ ...f, ippt_run_seconds: Math.floor((f.ippt_run_seconds || 0) / 60) * 60 + parseInt(e.target.value) }))} />
                     </div>
                   </div>
                 </div>
@@ -375,9 +361,9 @@ export default function ProfileStatistics() {
                 {profileData?.rank && profileData.rank !== 'Other' ? `${profileData.rank} ` : ''}
                 {profileData?.full_name || 'User'}
               </h2>
-              {ipptResult && ipptResult.award !== 'Fail' && ipptResult.award !== 'Pass' && (
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${AWARD_STYLES[ipptResult.award]}`}>
-                  IPPT {ipptResult.award}
+              {ippt && (ippt.award === 'Gold' || ippt.award === 'Silver') && (
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
+                  IPPT {ippt.award}
                 </span>
               )}
             </div>
@@ -396,14 +382,14 @@ export default function ProfileStatistics() {
         </CardContent>
       </Card>
 
-      {/* Official IPPT stats */}
+      {/* IPPT Results */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-yellow-500" /> Official IPPT Results
-            {ipptResult && (
-              <span className={`ml-auto text-xs font-bold px-3 py-1 rounded-full ${AWARD_STYLES[ipptResult.award]}`}>
-                {ipptResult.award} · {ipptResult.total} pts
+            {ippt && (
+              <span className={`ml-auto text-xs font-bold px-3 py-1 rounded-full ${AWARD_STYLE[ippt.award]}`}>
+                {ippt.award} · {ippt.total} pts
               </span>
             )}
           </CardTitle>
@@ -413,28 +399,34 @@ export default function ProfileStatistics() {
             <div className="text-center rounded-lg border p-3">
               <div className="text-2xl font-bold text-foreground">{profileData?.ippt_pushups ?? '-'}</div>
               <div className="text-xs text-muted-foreground">Push-ups</div>
-              {ipptResult && <div className="text-xs text-primary mt-1">{ipptResult.pu} pts</div>}
+              {ippt && <div className="text-xs text-primary mt-1">{ippt.pu} pts</div>}
             </div>
             <div className="text-center rounded-lg border p-3">
               <div className="text-2xl font-bold text-foreground">{profileData?.ippt_situps ?? '-'}</div>
               <div className="text-xs text-muted-foreground">Sit-ups</div>
-              {ipptResult && <div className="text-xs text-primary mt-1">{ipptResult.su} pts</div>}
+              {ippt && <div className="text-xs text-primary mt-1">{ippt.su} pts</div>}
             </div>
             <div className="text-center rounded-lg border p-3">
-              <div className="text-2xl font-bold text-foreground">{formatTime(profileData?.ippt_run_seconds ?? null)}</div>
+              <div className="text-2xl font-bold text-foreground">{fmtTime(profileData?.ippt_run_seconds ?? null)}</div>
               <div className="text-xs text-muted-foreground">2.4km Run</div>
-              {ipptResult && <div className="text-xs text-primary mt-1">{ipptResult.run} pts</div>}
+              {ippt && <div className="text-xs text-primary mt-1">{ippt.run} pts</div>}
             </div>
             <div className="text-center rounded-lg border p-3">
-              <div className={`text-2xl font-bold ${ipptResult ? (ipptResult.award === 'Fail' ? 'text-red-500' : ipptResult.award === 'Gold' ? 'text-yellow-500' : 'text-foreground') : 'text-foreground'}`}>
-                {ipptResult ? ipptResult.total : '-'}
+              <div className={`text-2xl font-bold ${ippt?.award === 'Gold' ? 'text-yellow-500' : ippt?.award === 'Fail' ? 'text-red-500' : 'text-foreground'}`}>
+                {ippt?.total ?? '-'}
               </div>
               <div className="text-xs text-muted-foreground">Total Score</div>
-              {ipptResult && <div className={`text-xs font-semibold mt-1 ${AWARD_STYLES[ipptResult.award].split(' ')[1]}`}>{ipptResult.award}</div>}
+              {ippt && (
+                <div className={`text-xs font-semibold mt-1 px-2 py-0.5 rounded-full inline-block ${AWARD_STYLE[ippt.award]}`}>
+                  {ippt.award}
+                </div>
+              )}
             </div>
           </div>
           {!profileData?.ippt_pushups && (
-            <p className="text-xs text-muted-foreground text-center mt-4">Enter your IPPT results via Edit Profile to see your score calculated automatically.</p>
+            <p className="text-xs text-muted-foreground text-center mt-4">
+              Enter your IPPT results via Edit Profile to calculate your score automatically.
+            </p>
           )}
         </CardContent>
       </Card>
@@ -445,7 +437,6 @@ export default function ProfileStatistics() {
           <div className="flex items-center justify-between">
             <CardTitle>Activity Tracking</CardTitle>
             <div className="flex gap-2">
-              {/* Graph button — only show if activities exist */}
               {activities.length > 0 && (
                 <Dialog open={graphOpen} onOpenChange={setGraphOpen}>
                   <DialogTrigger asChild>
@@ -469,8 +460,7 @@ export default function ProfileStatistics() {
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
                             <YAxis tick={{ fontSize: 10 }} />
-                            <Tooltip />
-                            <Legend />
+                            <Tooltip /><Legend />
                             <Bar dataKey="run_km" name="Run" fill="#3b82f6" />
                             <Bar dataKey="cycle_km" name="Cycle" fill="#f97316" />
                             <Bar dataKey="swim_km" name="Swim" fill="#06b6d4" />
@@ -496,8 +486,7 @@ export default function ProfileStatistics() {
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
                             <YAxis tick={{ fontSize: 10 }} />
-                            <Tooltip />
-                            <Legend />
+                            <Tooltip /><Legend />
                             <Line type="monotone" dataKey="avg_pushups" name="Push-ups" stroke="#3b82f6" dot />
                             <Line type="monotone" dataKey="avg_situps" name="Sit-ups" stroke="#10b981" dot />
                           </LineChart>
@@ -509,8 +498,8 @@ export default function ProfileStatistics() {
                           <LineChart data={graphData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} tickFormatter={v => formatTime(v)} />
-                            <Tooltip formatter={(v: number) => formatTime(v)} />
+                            <YAxis tick={{ fontSize: 10 }} tickFormatter={v => fmtTime(v)} />
+                            <Tooltip formatter={(v: number) => fmtTime(v)} />
                             <Line type="monotone" dataKey="avg_run_sec" name="Run Time" stroke="#f97316" dot />
                           </LineChart>
                         </ResponsiveContainer>
@@ -520,7 +509,6 @@ export default function ProfileStatistics() {
                 </Dialog>
               )}
 
-              {/* Log activity */}
               <Dialog open={addOpen} onOpenChange={setAddOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Log</Button>
@@ -531,11 +519,11 @@ export default function ProfileStatistics() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label>Date</Label>
-                        <Input type="date" value={activityForm.date} onChange={e => setActivityForm(f => ({ ...f, date: e.target.value }))} />
+                        <Input type="date" value={actForm.date} onChange={e => setActForm(f => ({ ...f, date: e.target.value }))} />
                       </div>
                       <div className="space-y-1">
                         <Label>Type</Label>
-                        <Select value={activityForm.type} onValueChange={v => setActivityForm(f => ({ ...f, type: v }))}>
+                        <Select value={actForm.type} onValueChange={v => setActForm(f => ({ ...f, type: v }))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="run">Run</SelectItem>
@@ -547,39 +535,39 @@ export default function ProfileStatistics() {
                         </Select>
                       </div>
                     </div>
-                    {['run', 'cycle', 'swim'].includes(activityForm.type) && (
+                    {['run', 'cycle', 'swim'].includes(actForm.type) && (
                       <div className="space-y-1">
                         <Label>Distance (km)</Label>
-                        <Input type="number" step="0.1" value={activityForm.distance_km} onChange={e => setActivityForm(f => ({ ...f, distance_km: e.target.value }))} />
+                        <Input type="number" step="0.1" value={actForm.distance_km} onChange={e => setActForm(f => ({ ...f, distance_km: e.target.value }))} />
                       </div>
                     )}
                     <div className="space-y-1">
                       <Label>Duration (minutes)</Label>
-                      <Input type="number" value={activityForm.duration_minutes} onChange={e => setActivityForm(f => ({ ...f, duration_minutes: e.target.value }))} />
+                      <Input type="number" value={actForm.duration_minutes} onChange={e => setActForm(f => ({ ...f, duration_minutes: e.target.value }))} />
                     </div>
                     <div className="border-t pt-3">
                       <p className="text-sm font-medium mb-2">IPPT Training (optional)</p>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label>Push-ups</Label>
-                          <Input type="number" value={activityForm.pushups} onChange={e => setActivityForm(f => ({ ...f, pushups: e.target.value }))} />
+                          <Input type="number" value={actForm.pushups} onChange={e => setActForm(f => ({ ...f, pushups: e.target.value }))} />
                         </div>
                         <div className="space-y-1">
                           <Label>Sit-ups</Label>
-                          <Input type="number" value={activityForm.situps} onChange={e => setActivityForm(f => ({ ...f, situps: e.target.value }))} />
+                          <Input type="number" value={actForm.situps} onChange={e => setActForm(f => ({ ...f, situps: e.target.value }))} />
                         </div>
                         <div className="col-span-2 space-y-1">
-                          <Label>2.4km Run Time (MM:SS)</Label>
+                          <Label>2.4km Run Time (MM : SS)</Label>
                           <div className="flex gap-2">
-                            <Input type="number" placeholder="MM" value={activityForm.run_seconds_min} onChange={e => setActivityForm(f => ({ ...f, run_seconds_min: e.target.value }))} />
-                            <Input type="number" placeholder="SS" value={activityForm.run_seconds_sec} onChange={e => setActivityForm(f => ({ ...f, run_seconds_sec: e.target.value }))} />
+                            <Input type="number" placeholder="MM" value={actForm.run_min} onChange={e => setActForm(f => ({ ...f, run_min: e.target.value }))} />
+                            <Input type="number" placeholder="SS" value={actForm.run_sec} onChange={e => setActForm(f => ({ ...f, run_sec: e.target.value }))} />
                           </div>
                         </div>
                       </div>
                     </div>
                     <div className="space-y-1">
                       <Label>Notes</Label>
-                      <Input value={activityForm.notes} onChange={e => setActivityForm(f => ({ ...f, notes: e.target.value }))} />
+                      <Input value={actForm.notes} onChange={e => setActForm(f => ({ ...f, notes: e.target.value }))} />
                     </div>
                     <Button className="w-full" onClick={saveActivity}>Save Activity</Button>
                   </div>
@@ -596,13 +584,13 @@ export default function ProfileStatistics() {
               {activities.slice().reverse().slice(0, 5).map(a => (
                 <div key={a.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div>
-                    <div className="font-medium text-sm text-foreground capitalize">{a.type}{a.distance_km ? ` · ${a.distance_km}km` : ''}</div>
+                    <div className="font-medium text-sm text-foreground capitalize">
+                      {a.type}{a.distance_km ? ` · ${a.distance_km}km` : ''}
+                    </div>
                     <div className="text-xs text-muted-foreground">{a.date}{a.notes ? ` · ${a.notes}` : ''}</div>
                   </div>
                   <div className="text-xs text-muted-foreground text-right">
-                    {a.pushups ? `${a.pushups} PU` : ''}
-                    {a.situps ? ` · ${a.situps} SU` : ''}
-                    {a.run_seconds ? ` · ${formatTime(a.run_seconds)}` : ''}
+                    {[a.pushups ? `${a.pushups} PU` : '', a.situps ? `${a.situps} SU` : '', a.run_seconds ? fmtTime(a.run_seconds) : ''].filter(Boolean).join(' · ')}
                   </div>
                 </div>
               ))}
