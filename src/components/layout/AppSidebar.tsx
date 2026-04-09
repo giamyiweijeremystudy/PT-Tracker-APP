@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 const mainItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Profile & History', url: '/profile', icon: User },
+  { title: 'Profile & Statistics', url: '/profile', icon: User },
 ];
 
 const calculatorItems = [
