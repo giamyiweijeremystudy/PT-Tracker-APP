@@ -32,7 +32,7 @@ export default function PTDashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">
-          Welcome back, {profile?.rank} {profile?.full_name || 'Soldier'} 💪
+          Welcome back, {profile?.rank && profile.rank !== 'Other' ? `${profile.rank} ` : ''}{profile?.full_name || 'Soldier'} 💪
         </h1>
         <p className="text-muted-foreground">Here's your fitness overview for today</p>
       </div>
