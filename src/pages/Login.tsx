@@ -38,14 +38,17 @@ export default function Login() {
     }
   };
 
-  const handleGoogleSignIn = async () => {
+const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     try {
-      const result = await lovable.auth.signInWithOAuth('google', {
-        redirect_uri: window.location.origin,
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
       });
-      if (result.error) {
-        toast({ title: 'Google sign in failed', description: String(result.error), variant: 'destructive' });
+      if (error) {
+        toast({ title: 'Google sign in failed', description: error.message, variant: 'destructive' });
       }
     } catch (err) {
       toast({ title: 'Google sign in failed', description: 'An unexpected error occurred', variant: 'destructive' });
