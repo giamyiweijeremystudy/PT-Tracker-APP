@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from '@/hooks/use-toast';
 import { Shield } from 'lucide-react';
 
-const RANKS = ['PVT', 'PV2', 'PFC', 'SPC', 'CPL', 'SGT', 'SSG', 'SFC', 'MSG', '1SG', 'SGM', 'CSM', '2LT', '1LT', 'CPT', 'MAJ', 'LTC', 'COL', 'BG', 'MG', 'LTG', 'GEN', 'Other'];
+const RANKS = ['ME1T' ,'Other'];
 
 export default function CompleteProfile() {
   const { user } = useAuth();
@@ -77,7 +77,6 @@ export default function CompleteProfile() {
                   required
                 >
                   <option value="">Select rank</option>
-                  <option value="ME1T">ME1T</option>
                   {RANKS.map(r => (
                     <option key={r} value={r}>{r}</option>
                   ))}
