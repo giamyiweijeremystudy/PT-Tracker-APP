@@ -10,14 +10,9 @@ import Signup from "./pages/Signup";
 import CompleteProfile from "./pages/CompleteProfile";
 import PTDashboard from "./pages/PTDashboard";
 import ProfileHistory from "./pages/ProfileHistory";
-import Calculators from "./pages/Calculators";
-import Leaderboard from "./pages/Leaderboard";
-import SpartanSubmissions from "./pages/SpartanSubmissions";
-import TrainingSchedule from "./pages/TrainingSchedule";
-import TrainingProgrammes from "./pages/TrainingProgrammes";
-import Reminders from "./pages/Reminders";
-import TemperatureIft from "./pages/TemperatureIft";
-import PtAttendance from "./pages/PtAttendance";
+import BmiCalculator from "./pages/BmiCalculator";
+import IpptCalculator from "./pages/IpptCalculator";
+import CalorieCalculator from "./pages/CalorieCalculator";
 import PTSettings from "./pages/PTSettings";
 import NotFound from "./pages/NotFound";
 
@@ -34,25 +29,16 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+          <Route path="/login"            element={<Login />} />
+          <Route path="/signup"           element={<Signup />} />
           <Route path="/complete-profile" element={<CompleteProfile />} />
-          <Route path="/" element={<P><PTDashboard /></P>} />
-          <Route path="/profile" element={<P><ProfileHistory /></P>} />
-          <Route path="/calculators" element={<P><Calculators /></P>} />
-          {/* Legacy redirects so old links still work */}
-          <Route path="/bmi" element={<P><Calculators /></P>} />
-          <Route path="/ippt" element={<P><Calculators /></P>} />
-          <Route path="/calories" element={<P><Calculators /></P>} />
-          <Route path="/leaderboard" element={<P><Leaderboard /></P>} />
-          <Route path="/spartan" element={<P><SpartanSubmissions /></P>} />
-          <Route path="/schedule" element={<P><TrainingSchedule /></P>} />
-          <Route path="/programmes" element={<P><TrainingProgrammes /></P>} />
-          <Route path="/reminders" element={<P><Reminders /></P>} />
-          <Route path="/temperature" element={<P><TemperatureIft /></P>} />
-          <Route path="/attendance" element={<P><PtAttendance /></P>} />
-          <Route path="/settings" element={<P><PTSettings /></P>} />
-          <Route path="*" element={<NotFound />} />
+          <Route path="/"                 element={<P><PTDashboard /></P>} />
+          <Route path="/profile"          element={<P><ProfileHistory /></P>} />
+          <Route path="/bmi"              element={<P><BmiCalculator /></P>} />
+          <Route path="/ippt"             element={<P><IpptCalculator /></P>} />
+          <Route path="/calories"         element={<P><CalorieCalculator /></P>} />
+          <Route path="/settings"         element={<P><PTSettings /></P>} />
+          <Route path="*"                 element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
