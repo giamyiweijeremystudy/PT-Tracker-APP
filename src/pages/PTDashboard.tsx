@@ -75,9 +75,7 @@ const typeColors: Record<string,string> = {
 };
 
 const quickActions = [
-  { label: 'BMI Calculator',     to: '/bmi',      icon: '🧮' },
-  { label: 'IPPT Calculator',    to: '/ippt',     icon: '🏃' },
-  { label: 'Calorie Calculator', to: '/calories', icon: '🍎' },
+  { label: 'Calculators', to: '/calculators', icon: '🧮' },
 ];
 
 export default function PTDashboard() {
@@ -119,7 +117,7 @@ export default function PTDashboard() {
           <CardTitle className="flex items-center gap-2 text-base"><Calculator className="h-5 w-5" /> Calculators</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2">
             {quickActions.map(a => (
               <Link key={a.label} to={a.to}>
                 <div className="rounded-xl border p-2.5 text-center hover:bg-muted/50 active:scale-95 transition-all cursor-pointer">
