@@ -44,6 +44,7 @@ type SavedActivity = {
   user_id: string;
   date: string;
   type: string;
+  title: string | null;
   custom_type: string | null;
   duration_minutes: number | null;
   distance_km: number | null;
@@ -94,6 +95,7 @@ const defaultForm = () => ({
   date: new Date().toISOString().split('T')[0],
   type: 'running' as ActivityType,
   custom_type: '',
+  title: '',
   duration_minutes: '',
   distance_km: '',
   laps: '',
@@ -162,7 +164,8 @@ export default function Activities() {
       sets:             form.sets ? parseInt(form.sets) : null,
       reps:             form.reps ? parseInt(form.reps) : null,
       weight_kg:        form.weight_kg ? parseFloat(form.weight_kg) : null,
-      description:      form.description || null,
+      title: form.title || null,
+      description: form.description || null,
     });
     setSaving(false);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
@@ -241,7 +244,11 @@ export default function Activities() {
                 <Input placeholder="e.g. Rock Climbing, Yoga..." value={form.custom_type} onChange={e => f('custom_type', e.target.value)} />
               </div>
             )}
-
+            {/* Title */}
+            <div className="space-y-2">
+              <Label>Title</Label>
+              <Input placeholder="e.g. Morning Run, Leg Day..." value={form.title} onChange={e => f('title', e.target.value)} />
+            </div>
             {/* Duration — all types */}
             <div className="space-y-2">
               <Label>Duration (minutes)</Label>
@@ -366,7 +373,7 @@ export default function Activities() {
                     <span className="text-xl shrink-0">{typeEmoji(a)}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground">{typeLabel(a)}</span>
+                        <span className="text-sm font-semibold text-foreground">{a.title || typeLabel(a)}</span>
                         <span className="text-xs text-muted-foreground">{a.date}</span>
                       </div>
                       <div className="text-xs text-muted-foreground truncate">{activitySummary(a)}</div>
