@@ -118,6 +118,170 @@ type FormState = ReturnType<typeof defaultForm>;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const ActivityForm = ({
+  formData, setField, imgPreview, setImgPreview, imgFile, onImageChange,
+  locatingState, setLocatingState, onSave, onCancel, savingState, isEdit
+}: {
+  formData: FormState;
+  setField: (key: keyof FormState, value: string) => void;
+  imgPreview: string | null;
+  setImgPreview: (v: string | null) => void;
+  imgFile: File | null;
+  onImageChange: (file: File | undefined) => void;
+  locatingState: boolean;
+  setLocatingState: (v: boolean) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  savingState: boolean;
+  isEdit?: boolean;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+}) => {
+  const t = formData.type;
+  return (
+    <div className="space-y-4">
+      {/* Date + Type */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Date</Label>
+          <Input type="date" value={formData.date} onChange={e => setField('date', e.target.value)} />
+        </div>
+      </div>
+
+      {/* Activity type grid */}
+      <div className="space-y-2">
+        <Label>Activity Type</Label>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {ACTIVITY_TYPES.map(at => (
+            <button key={at.value} onClick={() => setField('type', at.value)}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${formData.type === at.value ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}>
+              <span>{at.emoji}</span><span>{at.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {t === 'others' && (
+        <div className="space-y-2">
+          <Label>Custom Activity Name</Label>
+          <Input placeholder="e.g. Rock Climbing, Yoga..." value={formData.custom_type} onChange={e => setField('custom_type', e.target.value)} />
+        </div>
+      )}
+
+      {/* Title */}
+      <div className="space-y-2">
+        <Label>Title</Label>
+        <Input placeholder="e.g. Morning Run, Leg Day..." value={formData.title} onChange={e => setField('title', e.target.value)} />
+      </div>
+
+      {/* Duration */}
+      <div className="space-y-2">
+        <Label>Duration (minutes)</Label>
+        <Input type="number" placeholder="e.g. 45" value={formData.duration_minutes} onChange={e => setField('duration_minutes', e.target.value)} className="max-w-[160px]" />
+      </div>
+
+      {/* Distance */}
+      {DISTANCE_TYPES.includes(t) && t !== 'swimming' && (
+        <div className="space-y-2">
+          <Label>Distance (km)</Label>
+          <Input type="number" step="0.1" placeholder="e.g. 5.0" value={formData.distance_km} onChange={e => setField('distance_km', e.target.value)} className="max-w-[160px]" />
+          {formData.distance_km && formData.duration_minutes && (
+            <p className="text-xs text-muted-foreground">Pace: {fmtTime(Math.round((parseInt(formData.duration_minutes) * 60) / parseFloat(formData.distance_km)))}/km</p>
+          )}
+        </div>
+      )}
+
+      {/* Swimming */}
+      {SWIM_TYPES.includes(t) && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2"><Label>Distance (km)</Label><Input type="number" step="0.01" placeholder="1.0" value={formData.distance_km} onChange={e => setField('distance_km', e.target.value)} /></div>
+          <div className="space-y-2"><Label>Laps</Label><Input type="number" placeholder="40" value={formData.laps} onChange={e => setField('laps', e.target.value)} /></div>
+          <div className="space-y-2"><Label>Pool Length (m)</Label><Input type="number" placeholder="25 or 50" value={formData.pool_length_m} onChange={e => setField('pool_length_m', e.target.value)} /></div>
+        </div>
+      )}
+
+      {/* IPPT */}
+      {IPPT_TYPES.includes(t) && (
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-muted-foreground">IPPT Stations</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Push-ups</Label><Input type="number" placeholder="reps" value={formData.pushups} onChange={e => setField('pushups', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Sit-ups</Label><Input type="number" placeholder="reps" value={formData.situps} onChange={e => setField('situps', e.target.value)} /></div>
+            <div className="col-span-2 space-y-2">
+              <Label>2.4km Run (MM : SS)</Label>
+              <div className="flex items-center gap-2">
+                <Input type="number" placeholder="MM" value={formData.run_min} onChange={e => setField('run_min', e.target.value)} className="w-20" />
+                <span className="text-muted-foreground">:</span>
+                <Input type="number" placeholder="SS" value={formData.run_sec} onChange={e => setField('run_sec', e.target.value)} className="w-20" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gym */}
+      {GYM_TYPES.includes(t) && (
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-muted-foreground">Session Details</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-2"><Label>Sets</Label><Input type="number" placeholder="3" value={formData.sets} onChange={e => setField('sets', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Reps</Label><Input type="number" placeholder="10" value={formData.reps} onChange={e => setField('reps', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Weight (kg)</Label><Input type="number" step="0.5" placeholder="60" value={formData.weight_kg} onChange={e => setField('weight_kg', e.target.value)} /></div>
+          </div>
+        </div>
+      )}
+
+      {/* Location */}
+      <div className="space-y-2">
+        <Label>Location</Label>
+        <div className="flex gap-2">
+          <Input placeholder="e.g. Bishan Park" value={formData.location} onChange={e => setField('location', e.target.value)} />
+          <Button type="button" variant="outline" size="icon" disabled={locatingState}
+            onClick={() => getLocation(setLocatingState, setField)}
+            title="Use current location">
+            {locatingState ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+          </Button>
+        </div>
+      </div>
+
+      {/* Description */}
+      <div className="space-y-2">
+        <Label>Description / Notes</Label>
+        <Textarea placeholder="How did it go?" value={formData.description} onChange={e => setField('description', e.target.value)} rows={3} />
+      </div>
+
+      {/* Image upload */}
+      <div className="space-y-2">
+        <Label>Photo</Label>
+        {imgPreview ? (
+          <div className="relative w-full rounded-xl overflow-hidden">
+            <img src={imgPreview} alt="preview" className="w-full max-h-64 object-cover" />
+            <button onClick={() => { setImgPreview(null); }}
+              className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => (isEdit ? editFileRef : fileRef).current?.click()}
+            className="w-full rounded-xl border-2 border-dashed border-border p-6 text-center text-muted-foreground hover:bg-muted/40 transition-colors">
+            <Image className="h-6 w-6 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">Tap to add a photo</p>
+          </button>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        <Button onClick={onSave} disabled={savingState} className="flex-1">
+          {savingState ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{isEdit ? 'Saving...' : 'Posting...'}</> : <><Check className="h-4 w-4 mr-2" />{isEdit ? 'Save Changes' : 'Post Activity'}</>}
+        </Button>
+        <Button onClick={onCancel} variant="outline" className="flex-1">
+          <X className="h-4 w-4 mr-2" />Cancel
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 export default function Activities() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
@@ -296,169 +460,6 @@ export default function Activities() {
 
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
 
-  const ActivityForm = ({
-    formData, setField, imgPreview, setImgPreview, imgFile, onImageChange,
-    locatingState, setLocatingState, onSave, onCancel, savingState, isEdit
-  }: {
-    formData: FormState;
-    setField: (key: keyof FormState, value: string) => void;
-    imgPreview: string | null;
-    setImgPreview: (v: string | null) => void;
-    imgFile: File | null;
-    onImageChange: (file: File | undefined) => void;
-    locatingState: boolean;
-    setLocatingState: (v: boolean) => void;
-    onSave: () => void;
-    onCancel: () => void;
-    savingState: boolean;
-    isEdit?: boolean;
-    fileInputRef: React.RefObject<HTMLInputElement>;
-  }) => {
-    const t = formData.type;
-    return (
-      <div className="space-y-4">
-        {/* Date + Type */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Date</Label>
-            <Input type="date" value={formData.date} onChange={e => setField('date', e.target.value)} />
-          </div>
-        </div>
-
-        {/* Activity type grid */}
-        <div className="space-y-2">
-          <Label>Activity Type</Label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {ACTIVITY_TYPES.map(at => (
-              <button key={at.value} onClick={() => setField('type', at.value)}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${formData.type === at.value ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}>
-                <span>{at.emoji}</span><span>{at.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {t === 'others' && (
-          <div className="space-y-2">
-            <Label>Custom Activity Name</Label>
-            <Input placeholder="e.g. Rock Climbing, Yoga..." value={formData.custom_type} onChange={e => setField('custom_type', e.target.value)} />
-          </div>
-        )}
-
-        {/* Title */}
-        <div className="space-y-2">
-          <Label>Title</Label>
-          <Input placeholder="e.g. Morning Run, Leg Day..." value={formData.title} onChange={e => setField('title', e.target.value)} />
-        </div>
-
-        {/* Duration */}
-        <div className="space-y-2">
-          <Label>Duration (minutes)</Label>
-          <Input type="number" placeholder="e.g. 45" value={formData.duration_minutes} onChange={e => setField('duration_minutes', e.target.value)} className="max-w-[160px]" />
-        </div>
-
-        {/* Distance */}
-        {DISTANCE_TYPES.includes(t) && t !== 'swimming' && (
-          <div className="space-y-2">
-            <Label>Distance (km)</Label>
-            <Input type="number" step="0.1" placeholder="e.g. 5.0" value={formData.distance_km} onChange={e => setField('distance_km', e.target.value)} className="max-w-[160px]" />
-            {formData.distance_km && formData.duration_minutes && (
-              <p className="text-xs text-muted-foreground">Pace: {fmtTime(Math.round((parseInt(formData.duration_minutes) * 60) / parseFloat(formData.distance_km)))}/km</p>
-            )}
-          </div>
-        )}
-
-        {/* Swimming */}
-        {SWIM_TYPES.includes(t) && (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Distance (km)</Label><Input type="number" step="0.01" placeholder="1.0" value={formData.distance_km} onChange={e => setField('distance_km', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Laps</Label><Input type="number" placeholder="40" value={formData.laps} onChange={e => setField('laps', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Pool Length (m)</Label><Input type="number" placeholder="25 or 50" value={formData.pool_length_m} onChange={e => setField('pool_length_m', e.target.value)} /></div>
-          </div>
-        )}
-
-        {/* IPPT */}
-        {IPPT_TYPES.includes(t) && (
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-muted-foreground">IPPT Stations</p>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Push-ups</Label><Input type="number" placeholder="reps" value={formData.pushups} onChange={e => setField('pushups', e.target.value)} /></div>
-              <div className="space-y-2"><Label>Sit-ups</Label><Input type="number" placeholder="reps" value={formData.situps} onChange={e => setField('situps', e.target.value)} /></div>
-              <div className="col-span-2 space-y-2">
-                <Label>2.4km Run (MM : SS)</Label>
-                <div className="flex items-center gap-2">
-                  <Input type="number" placeholder="MM" value={formData.run_min} onChange={e => setField('run_min', e.target.value)} className="w-20" />
-                  <span className="text-muted-foreground">:</span>
-                  <Input type="number" placeholder="SS" value={formData.run_sec} onChange={e => setField('run_sec', e.target.value)} className="w-20" />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Gym */}
-        {GYM_TYPES.includes(t) && (
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-muted-foreground">Session Details</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2"><Label>Sets</Label><Input type="number" placeholder="3" value={formData.sets} onChange={e => setField('sets', e.target.value)} /></div>
-              <div className="space-y-2"><Label>Reps</Label><Input type="number" placeholder="10" value={formData.reps} onChange={e => setField('reps', e.target.value)} /></div>
-              <div className="space-y-2"><Label>Weight (kg)</Label><Input type="number" step="0.5" placeholder="60" value={formData.weight_kg} onChange={e => setField('weight_kg', e.target.value)} /></div>
-            </div>
-          </div>
-        )}
-
-        {/* Location */}
-        <div className="space-y-2">
-          <Label>Location</Label>
-          <div className="flex gap-2">
-            <Input placeholder="e.g. Bishan Park" value={formData.location} onChange={e => setField('location', e.target.value)} />
-            <Button type="button" variant="outline" size="icon" disabled={locatingState}
-              onClick={() => getLocation(setLocatingState, setField)}
-              title="Use current location">
-              {locatingState ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
-
-        {/* Description */}
-        <div className="space-y-2">
-          <Label>Description / Notes</Label>
-          <Textarea placeholder="How did it go?" value={formData.description} onChange={e => setField('description', e.target.value)} rows={3} />
-        </div>
-
-        {/* Image upload */}
-        <div className="space-y-2">
-          <Label>Photo</Label>
-          {imgPreview ? (
-            <div className="relative w-full rounded-xl overflow-hidden">
-              <img src={imgPreview} alt="preview" className="w-full max-h-64 object-cover" />
-              <button onClick={() => { setImgPreview(null); }}
-                className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => (isEdit ? editFileRef : fileRef).current?.click()}
-              className="w-full rounded-xl border-2 border-dashed border-border p-6 text-center text-muted-foreground hover:bg-muted/40 transition-colors">
-              <Image className="h-6 w-6 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Tap to add a photo</p>
-            </button>
-          )}
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex gap-2">
-          <Button onClick={onSave} disabled={savingState} className="flex-1">
-            {savingState ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{isEdit ? 'Saving...' : 'Posting...'}</> : <><Check className="h-4 w-4 mr-2" />{isEdit ? 'Save Changes' : 'Post Activity'}</>}
-          </Button>
-          <Button onClick={onCancel} variant="outline" className="flex-1">
-            <X className="h-4 w-4 mr-2" />Cancel
-          </Button>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="max-w-xl mx-auto space-y-4 pb-10">
