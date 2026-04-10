@@ -114,7 +114,7 @@ export default function PTDashboard() {
       {/* Quick Actions — top on mobile */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base"><Calculator className="h-5 w-5" /> Calculators</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base"><Calculator className="h-5 w-5" /> Quick Actions</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-2">
