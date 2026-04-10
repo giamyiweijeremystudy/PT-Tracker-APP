@@ -13,6 +13,7 @@ import ProfileHistory from "./pages/ProfileHistory";
 import Calculators from "./pages/Calculators";
 import PTSettings from "./pages/PTSettings";
 import NotFound from "./pages/NotFound";
+import Activities from "./pages/Activities";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const App = () => (
           <Route path="/"                 element={<P><PTDashboard /></P>} />
           <Route path="/profile"          element={<P><ProfileHistory /></P>} />
           <Route path="/calculators" element={<P><Calculators /></P>} />
+          <Route path="/activities" element={<P><Activities /></P>} />
           <Route path="/settings"         element={<P><PTSettings /></P>} />
           <Route path="*"                 element={<NotFound />} />
         </Routes>
