@@ -116,11 +116,65 @@ const defaultForm = () => ({
 
 type FormState = ReturnType<typeof defaultForm>;
 
+// ─── Location helper ──────────────────────────────────────────────────────────
+
+function formatAddress(data: any, lat: number, lon: number): string {
+  const a = data.address ?? {};
+  // Try progressively broader named places
+  const named =
+    a.amenity || a.building || a.leisure ||
+    a.suburb || a.neighbourhood || a.quarter ||
+    a.city_district || a.district ||
+    a.town || a.village || a.city ||
+    a.county;
+
+  if (named) {
+    // Truncate to 30 chars
+    return named.length > 30 ? named.slice(0, 28) + '…' : named;
+  }
+  // No named location — use "Nearby (lat, lon)"
+  return `Nearby (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+}
+
+async function fetchLocation(
+  setLocating: (v: boolean) => void,
+  setField: (key: keyof FormState, value: string) => void,
+  onError: (msg: string) => void
+) {
+  if (!navigator.geolocation) { onError('Geolocation not supported on this device'); return; }
+  setLocating(true);
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      const { latitude, longitude } = pos.coords;
+      setField('latitude', String(latitude));
+      setField('longitude', String(longitude));
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await res.json();
+        setField('location', formatAddress(data, latitude, longitude));
+      } catch {
+        setField('location', `Nearby (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+      }
+      setLocating(false);
+    },
+    err => {
+      const msg = err.code === 1 ? 'Location permission denied' : 'Could not get your location';
+      onError(msg);
+      setLocating(false);
+    },
+    { timeout: 10000, enableHighAccuracy: true }
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const ActivityForm = ({
   formData, setField, imgPreview, setImgPreview, imgFile, onImageChange,
-  locatingState, setLocatingState, onSave, onCancel, savingState, isEdit
+  locatingState, setLocatingState, onSave, onCancel, savingState, isEdit,
+  onLocationError,
 }: {
   formData: FormState;
   setField: (key: keyof FormState, value: string) => void;
@@ -134,6 +188,7 @@ const ActivityForm = ({
   onCancel: () => void;
   savingState: boolean;
   isEdit?: boolean;
+  onLocationError: (msg: string) => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
 }) => {
   const t = formData.type;
@@ -236,7 +291,7 @@ const ActivityForm = ({
         <div className="flex gap-2">
           <Input placeholder="e.g. Bishan Park" value={formData.location} onChange={e => setField('location', e.target.value)} />
           <Button type="button" variant="outline" size="icon" disabled={locatingState}
-            onClick={() => getLocation(setLocatingState, setField)}
+            onClick={() => fetchLocation(setLocatingState, setField, onLocationError)}
             title="Use current location">
             {locatingState ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
           </Button>
@@ -325,28 +380,7 @@ export default function Activities() {
     return data.publicUrl;
   };
 
-  const getLocation = (setLocatingFn: (v: boolean) => void, setFormFn: (key: keyof FormState, value: string) => void) => {
-    if (!navigator.geolocation) { toast({ title: 'Geolocation not supported', variant: 'destructive' }); return; }
-    setLocatingFn(true);
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const { latitude, longitude } = pos.coords;
-        setFormFn('latitude', String(latitude));
-        setFormFn('longitude', String(longitude));
-        // Reverse geocode using free API
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
-          const data = await res.json();
-          const loc = data.address?.suburb || data.address?.city_district || data.address?.city || data.display_name?.split(',')[0] || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-          setFormFn('location', loc);
-        } catch {
-          setFormFn('location', `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
-        }
-        setLocatingFn(false);
-      },
-      () => { toast({ title: 'Could not get location', variant: 'destructive' }); setLocatingFn(false); }
-    );
-  };
+  const handleLocationError = (msg: string) => toast({ title: msg, variant: 'destructive' });
 
   const buildInsertPayload = (formData: FormState, imageUrl: string | null, userId: string) => {
     const run_seconds = (formData.run_min || formData.run_sec)
@@ -495,7 +529,7 @@ export default function Activities() {
             imgFile={imageFile} onImageChange={file => handleImageChange(file, false)}
             locatingState={locating} setLocatingState={setLocating}
             onSave={save} onCancel={() => { setShowForm(false); setForm(defaultForm()); setImagePreview(null); setImageFile(null); }}
-            savingState={saving} fileInputRef={fileRef}
+            savingState={saving} onLocationError={handleLocationError} fileInputRef={fileRef}
           />
         </div>
       )}
@@ -523,7 +557,7 @@ export default function Activities() {
                   imgFile={editImageFile} onImageChange={file => handleImageChange(file, true)}
                   locatingState={editLocating} setLocatingState={setEditLocating}
                   onSave={saveEdit} onCancel={() => setEditingId(null)}
-                  savingState={editSaving} isEdit fileInputRef={editFileRef}
+                  savingState={editSaving} isEdit onLocationError={handleLocationError} fileInputRef={editFileRef}
                 />
               </div>
             ) : (
