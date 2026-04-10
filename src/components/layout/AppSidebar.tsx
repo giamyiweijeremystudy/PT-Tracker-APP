@@ -1,4 +1,4 @@
-import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings } from 'lucide-react';
+import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings, Activity } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,6 +13,7 @@ const mainItems = [
   { title: 'Dashboard',            url: '/',            icon: LayoutDashboard },
   { title: 'Profile & Statistics', url: '/profile',     icon: User            },
   { title: 'Calculators',          url: '/calculators', icon: Calculator      },
+  { title: 'Activities',           url: '/activities',  icon: Activity        },
 ];
 
 export function AppSidebar() {
