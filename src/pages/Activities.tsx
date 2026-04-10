@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -73,7 +73,6 @@ function typeEmoji(a: SavedActivity) {
   if (a.type === 'others') return '➕';
   return ACTIVITY_TYPES.find(t => t.value === a.type)?.emoji ?? '🏃';
 }
-
 function activityStats(a: SavedActivity): { label: string; value: string }[] {
   const stats: { label: string; value: string }[] = [];
   if (a.duration_minutes) stats.push({ label: 'Duration', value: `${a.duration_minutes} min` });
@@ -89,8 +88,6 @@ function activityStats(a: SavedActivity): { label: string; value: string }[] {
   if (a.weight_kg)        stats.push({ label: 'Weight',   value: `${a.weight_kg} kg` });
   return stats;
 }
-
-// ─── Form state ───────────────────────────────────────────────────────────────
 
 const defaultForm = () => ({
   date: new Date().toISOString().split('T')[0],
@@ -116,98 +113,54 @@ const defaultForm = () => ({
 
 type FormState = ReturnType<typeof defaultForm>;
 
-// ─── Location helper ──────────────────────────────────────────────────────────
-
 function formatAddress(data: any, lat: number, lon: number): string {
   const a = data.address ?? {};
-  // Try progressively broader named places
   const named =
     a.amenity || a.building || a.leisure ||
     a.suburb || a.neighbourhood || a.quarter ||
     a.city_district || a.district ||
-    a.town || a.village || a.city ||
-    a.county;
-
-  if (named) {
-    // Truncate to 30 chars
-    return named.length > 30 ? named.slice(0, 28) + '…' : named;
-  }
-  // No named location — use "Nearby (lat, lon)"
+    a.town || a.village || a.city || a.county;
+  if (named) return named.length > 30 ? named.slice(0, 28) + '…' : named;
   return `Nearby (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
 }
 
-async function fetchLocation(
-  setLocating: (v: boolean) => void,
-  setField: (key: keyof FormState, value: string) => void,
-  onError: (msg: string) => void
-) {
-  if (!navigator.geolocation) { onError('Geolocation not supported on this device'); return; }
-  setLocating(true);
-  navigator.geolocation.getCurrentPosition(
-    async pos => {
-      const { latitude, longitude } = pos.coords;
-      setField('latitude', String(latitude));
-      setField('longitude', String(longitude));
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`,
-          { headers: { 'Accept-Language': 'en' } }
-        );
-        const data = await res.json();
-        setField('location', formatAddress(data, latitude, longitude));
-      } catch {
-        setField('location', `Nearby (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
-      }
-      setLocating(false);
-    },
-    err => {
-      const msg = err.code === 1 ? 'Location permission denied' : 'Could not get your location';
-      onError(msg);
-      setLocating(false);
-    },
-    { timeout: 10000, enableHighAccuracy: true }
-  );
-}
+// ─── ActivityForm — defined OUTSIDE main component to prevent remounting ──────
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-const ActivityForm = ({
-  formData, setField, imgPreview, setImgPreview, imgFile, onImageChange,
-  locatingState, setLocatingState, onSave, onCancel, savingState, isEdit,
-  onLocationError,
-}: {
+type ActivityFormProps = {
   formData: FormState;
   setField: (key: keyof FormState, value: string) => void;
   imgPreview: string | null;
   setImgPreview: (v: string | null) => void;
-  imgFile: File | null;
-  onImageChange: (file: File | undefined) => void;
   locatingState: boolean;
-  setLocatingState: (v: boolean) => void;
+  onGetLocation: () => void;
   onSave: () => void;
   onCancel: () => void;
   savingState: boolean;
   isEdit?: boolean;
-  onLocationError: (msg: string) => void;
-  fileInputRef: React.RefObject<HTMLInputElement>;
-}) => {
+  onPhotoClick: () => void;
+};
+
+function ActivityForm({
+  formData, setField, imgPreview, setImgPreview,
+  locatingState, onGetLocation, onSave, onCancel,
+  savingState, isEdit, onPhotoClick,
+}: ActivityFormProps) {
   const t = formData.type;
   return (
     <div className="space-y-4">
-      {/* Date + Type */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Date</Label>
-          <Input type="date" value={formData.date} onChange={e => setField('date', e.target.value)} />
-        </div>
+
+      {/* Date */}
+      <div className="space-y-2">
+        <Label>Date</Label>
+        <Input type="date" value={formData.date} onChange={e => setField('date', e.target.value)} className="max-w-[180px]" />
       </div>
 
-      {/* Activity type grid */}
+      {/* Activity type */}
       <div className="space-y-2">
         <Label>Activity Type</Label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {ACTIVITY_TYPES.map(at => (
-            <button key={at.value} onClick={() => setField('type', at.value)}
+            <button key={at.value} type="button" onClick={() => setField('type', at.value)}
               className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${formData.type === at.value ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}>
               <span>{at.emoji}</span><span>{at.label}</span>
             </button>
@@ -240,7 +193,9 @@ const ActivityForm = ({
           <Label>Distance (km)</Label>
           <Input type="number" step="0.1" placeholder="e.g. 5.0" value={formData.distance_km} onChange={e => setField('distance_km', e.target.value)} className="max-w-[160px]" />
           {formData.distance_km && formData.duration_minutes && (
-            <p className="text-xs text-muted-foreground">Pace: {fmtTime(Math.round((parseInt(formData.duration_minutes) * 60) / parseFloat(formData.distance_km)))}/km</p>
+            <p className="text-xs text-muted-foreground">
+              Pace: {fmtTime(Math.round((parseInt(formData.duration_minutes) * 60) / parseFloat(formData.distance_km)))}/km
+            </p>
           )}
         </div>
       )}
@@ -285,86 +240,104 @@ const ActivityForm = ({
         </div>
       )}
 
-{/* Location */}
-<div className="space-y-2">
-  <Label>Location</Label>
-  <div className="flex gap-2">
-    <Input
-      placeholder="e.g. Bishan Park"
-      value={formData.location}
-      onChange={e => setField('location', e.target.value)}
-    />
-    <button
-      type="button"
-      disabled={locatingState}
-      onClick={() => fetchLocation(setLocatingState, setField, onLocationError)}
-      className="flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-muted shrink-0"
-    >
-      {locatingState
-        ? <Loader2 className="h-4 w-4 animate-spin" />
-        : <MapPin className="h-4 w-4" />}
-    </button>
-  </div>
-</div>
+      {/* Location */}
+      <div className="space-y-2">
+        <Label>Location</Label>
+        <div className="flex gap-2">
+          <Input
+            placeholder="e.g. Bishan Park"
+            value={formData.location}
+            onChange={e => setField('location', e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={locatingState}
+            onClick={onGetLocation}
+            className="flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent shrink-0 transition-colors"
+            title="Use current location"
+          >
+            {locatingState
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <MapPin className="h-4 w-4" />}
+          </button>
+        </div>
+        {locatingState && <p className="text-xs text-muted-foreground">Getting your location...</p>}
+      </div>
 
       {/* Description */}
       <div className="space-y-2">
         <Label>Description / Notes</Label>
-        <Textarea placeholder="How did it go?" value={formData.description} onChange={e => setField('description', e.target.value)} rows={3} />
+        <Textarea
+          placeholder="How did it go?"
+          value={formData.description}
+          onChange={e => setField('description', e.target.value)}
+          rows={3}
+        />
       </div>
 
-      {/* Image upload */}
+      {/* Photo */}
       <div className="space-y-2">
         <Label>Photo</Label>
         {imgPreview ? (
           <div className="relative w-full rounded-xl overflow-hidden">
             <img src={imgPreview} alt="preview" className="w-full max-h-64 object-cover" />
-            <button onClick={() => { setImgPreview(null); }}
-              className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80">
+            <button
+              type="button"
+              onClick={() => setImgPreview(null)}
+              className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80"
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
         ) : (
-          <button onClick={() => (isEdit ? editFileRef : fileRef).current?.click()}
-            className="w-full rounded-xl border-2 border-dashed border-border p-6 text-center text-muted-foreground hover:bg-muted/40 transition-colors">
+          <button
+            type="button"
+            onClick={onPhotoClick}
+            className="w-full rounded-xl border-2 border-dashed border-border p-6 text-center text-muted-foreground hover:bg-muted/40 transition-colors"
+          >
             <Image className="h-6 w-6 mx-auto mb-2 opacity-50" />
             <p className="text-sm">Tap to add a photo</p>
           </button>
         )}
       </div>
 
-      {/* Action buttons */}
+      {/* Buttons */}
       <div className="flex gap-2">
-        <Button onClick={onSave} disabled={savingState} className="flex-1">
-          {savingState ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{isEdit ? 'Saving...' : 'Posting...'}</> : <><Check className="h-4 w-4 mr-2" />{isEdit ? 'Save Changes' : 'Post Activity'}</>}
+        <Button type="button" onClick={onSave} disabled={savingState} className="flex-1">
+          {savingState
+            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{isEdit ? 'Saving...' : 'Posting...'}</>
+            : <><Check className="h-4 w-4 mr-2" />{isEdit ? 'Save Changes' : 'Post Activity'}</>}
         </Button>
-        <Button onClick={onCancel} variant="outline" className="flex-1">
+        <Button type="button" onClick={onCancel} variant="outline" className="flex-1">
           <X className="h-4 w-4 mr-2" />Cancel
         </Button>
       </div>
     </div>
   );
-};
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Activities() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
 
-  const [activities, setActivities] = useState<SavedActivity[]>([]);
-  const [form, setForm] = useState<FormState>(defaultForm());
-  const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<FormState>(defaultForm());
+  const [activities, setActivities]       = useState<SavedActivity[]>([]);
+  const [form, setForm]                   = useState<FormState>(defaultForm());
+  const [saving, setSaving]               = useState(false);
+  const [showForm, setShowForm]           = useState(false);
+  const [imageFile, setImageFile]         = useState<File | null>(null);
+  const [imagePreview, setImagePreview]   = useState<string | null>(null);
+  const [locating, setLocating]           = useState(false);
+  const [deleting, setDeleting]           = useState<string | null>(null);
+  const [editingId, setEditingId]         = useState<string | null>(null);
+  const [editForm, setEditForm]           = useState<FormState>(defaultForm());
   const [editImageFile, setEditImageFile] = useState<File | null>(null);
   const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
-  const [editLocating, setEditLocating] = useState(false);
-  const [editSaving, setEditSaving] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [editLocating, setEditLocating]   = useState(false);
+  const [editSaving, setEditSaving]       = useState(false);
+
+  const fileRef     = useRef<HTMLInputElement>(null);
   const editFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (user) fetchActivities(); }, [user]);
@@ -376,37 +349,66 @@ export default function Activities() {
     if (data) setActivities(data as SavedActivity[]);
   };
 
-  const f = (key: keyof FormState, value: string) => setForm(p => ({ ...p, [key]: value }));
-  const ef = (key: keyof FormState, value: string) => setEditForm(p => ({ ...p, [key]: value }));
+  const f  = useCallback((key: keyof FormState, value: string) => setForm(p => ({ ...p, [key]: value })), []);
+  const ef = useCallback((key: keyof FormState, value: string) => setEditForm(p => ({ ...p, [key]: value })), []);
 
-  // Upload image to Supabase storage
-  const uploadImage = async (file: File, userId: string): Promise<string | null> => {
+  const uploadImage = async (file: File): Promise<string | null> => {
     const ext = file.name.split('.').pop();
-    const path = `${userId}/${Date.now()}.${ext}`;
+    const path = `${user!.id}/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from('activity-images').upload(path, file);
     if (error) return null;
-    const { data } = supabase.storage.from('activity-images').getPublicUrl(path);
-    return data.publicUrl;
+    return supabase.storage.from('activity-images').getPublicUrl(path).data.publicUrl;
   };
 
-  const handleLocationError = (msg: string) => toast({ title: msg, variant: 'destructive' });
+  // Location getter — lives inside component so it has access to toast and state setters
+  const makeLocationGetter = (
+    setLocatingFn: (v: boolean) => void,
+    setFieldFn: (key: keyof FormState, value: string) => void
+  ) => () => {
+    if (!navigator.geolocation) {
+      toast({ title: 'Geolocation not supported on this device', variant: 'destructive' });
+      return;
+    }
+    setLocatingFn(true);
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const { latitude, longitude } = pos.coords;
+        setFieldFn('latitude', String(latitude));
+        setFieldFn('longitude', String(longitude));
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const data = await res.json();
+          setFieldFn('location', formatAddress(data, latitude, longitude));
+        } catch {
+          setFieldFn('location', `Nearby (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+        }
+        setLocatingFn(false);
+      },
+      err => {
+        const msg = err.code === 1 ? 'Location permission denied — check your browser settings' : 'Could not get your location';
+        toast({ title: msg, variant: 'destructive' });
+        setLocatingFn(false);
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
 
-  const buildInsertPayload = (formData: FormState, imageUrl: string | null, userId: string) => {
+  const buildPayload = (formData: FormState, imageUrl: string | null) => {
     const run_seconds = (formData.run_min || formData.run_sec)
       ? parseInt(formData.run_min || '0') * 60 + parseInt(formData.run_sec || '0') : null;
     const distance_km = formData.distance_km ? parseFloat(formData.distance_km) : null;
     const duration_minutes = formData.duration_minutes ? parseInt(formData.duration_minutes) : null;
-    const pace_per_km = distance_km && duration_minutes && DISTANCE_TYPES.includes(formData.type) && formData.type !== 'cycling' && formData.type !== 'swimming'
+    const pace_per_km = distance_km && duration_minutes &&
+      DISTANCE_TYPES.includes(formData.type) && formData.type !== 'cycling' && formData.type !== 'swimming'
       ? Math.round((duration_minutes * 60) / distance_km) : null;
     return {
-      user_id: userId,
-      date: formData.date,
-      type: formData.type,
+      user_id: user!.id, date: formData.date, type: formData.type,
       title: formData.title || null,
       custom_type: formData.type === 'others' ? formData.custom_type || null : null,
-      duration_minutes,
-      distance_km,
-      pace_per_km,
+      duration_minutes, distance_km, pace_per_km,
       laps: formData.laps ? parseInt(formData.laps) : null,
       pool_length_m: formData.pool_length_m ? parseInt(formData.pool_length_m) : null,
       pushups: formData.pushups ? parseInt(formData.pushups) : null,
@@ -425,34 +427,27 @@ export default function Activities() {
 
   const save = async () => {
     setSaving(true);
-    let imageUrl: string | null = null;
-    if (imageFile) imageUrl = await uploadImage(imageFile, user!.id);
-    const payload = buildInsertPayload(form, imageUrl, user!.id);
-    const { error } = await supabase.from('activities').insert(payload);
+    const imageUrl = imageFile ? await uploadImage(imageFile) : null;
+    const { error } = await supabase.from('activities').insert(buildPayload(form, imageUrl));
     setSaving(false);
-    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
-    else {
-      toast({ title: 'Activity posted!' });
-      setForm(defaultForm()); setImageFile(null); setImagePreview(null); setShowForm(false);
-      fetchActivities();
-    }
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Activity posted!' });
+    setForm(defaultForm()); setImageFile(null); setImagePreview(null); setShowForm(false);
+    fetchActivities();
   };
 
   const startEdit = (a: SavedActivity) => {
-    const runMin = a.run_seconds ? String(Math.floor(a.run_seconds / 60)) : '';
-    const runSec = a.run_seconds ? String(a.run_seconds % 60) : '';
     setEditForm({
-      date: a.date,
-      type: (a.type as ActivityType) || 'running',
-      title: a.title || '',
-      custom_type: a.custom_type || '',
+      date: a.date, type: (a.type as ActivityType) || 'running',
+      title: a.title || '', custom_type: a.custom_type || '',
       duration_minutes: a.duration_minutes ? String(a.duration_minutes) : '',
       distance_km: a.distance_km ? String(a.distance_km) : '',
       laps: a.laps ? String(a.laps) : '',
       pool_length_m: a.pool_length_m ? String(a.pool_length_m) : '',
       pushups: a.pushups ? String(a.pushups) : '',
       situps: a.situps ? String(a.situps) : '',
-      run_min: runMin, run_sec: runSec,
+      run_min: a.run_seconds ? String(Math.floor(a.run_seconds / 60)) : '',
+      run_sec: a.run_seconds ? String(a.run_seconds % 60) : '',
       sets: a.sets ? String(a.sets) : '',
       reps: a.reps ? String(a.reps) : '',
       weight_kg: a.weight_kg ? String(a.weight_kg) : '',
@@ -469,13 +464,13 @@ export default function Activities() {
   const saveEdit = async () => {
     if (!editingId) return;
     setEditSaving(true);
-    let imageUrl = editImagePreview; // keep existing if no new file
-    if (editImageFile) imageUrl = await uploadImage(editImageFile, user!.id);
-    const payload = buildInsertPayload(editForm, imageUrl, user!.id);
-    const { error } = await supabase.from('activities').update(payload).eq('id', editingId);
+    const imageUrl = editImageFile ? await uploadImage(editImageFile) : editImagePreview;
+    const { error } = await supabase.from('activities').update(buildPayload(editForm, imageUrl)).eq('id', editingId);
     setEditSaving(false);
-    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
-    else { toast({ title: 'Activity updated!' }); setEditingId(null); fetchActivities(); }
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Activity updated!' });
+    setEditingId(null);
+    fetchActivities();
   };
 
   const deleteActivity = async (id: string, imageUrl: string | null) => {
@@ -486,23 +481,16 @@ export default function Activities() {
     }
     const { error } = await supabase.from('activities').delete().eq('id', id);
     setDeleting(null);
-    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
-    else { toast({ title: 'Deleted' }); fetchActivities(); }
-  };
-
-  const handleImageChange = (file: File | undefined, preview: boolean) => {
-    if (!file) return;
-    if (preview) {
-      setEditImageFile(file);
-      setEditImagePreview(URL.createObjectURL(file));
-    } else {
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
-    }
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Deleted' });
+    fetchActivities();
   };
 
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
 
+  // Stable location getters (won't cause re-renders)
+  const getLocationForNew  = useCallback(makeLocationGetter(setLocating, f),  [locating]);
+  const getLocationForEdit = useCallback(makeLocationGetter(setEditLocating, ef), [editLocating]);
 
   return (
     <div className="max-w-xl mx-auto space-y-4 pb-10">
@@ -531,19 +519,26 @@ export default function Activities() {
             </div>
           </div>
           <input ref={fileRef} type="file" accept="image/*" className="hidden"
-            onChange={e => handleImageChange(e.target.files?.[0], false)} />
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) { setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
+            }} />
           <ActivityForm
-            formData={form} setField={f}
-            imgPreview={imagePreview} setImgPreview={setImagePreview}
-            imgFile={imageFile} onImageChange={file => handleImageChange(file, false)}
-            locatingState={locating} setLocatingState={setLocating}
-            onSave={save} onCancel={() => { setShowForm(false); setForm(defaultForm()); setImagePreview(null); setImageFile(null); }}
-            savingState={saving} onLocationError={handleLocationError} fileInputRef={fileRef}
+            formData={form}
+            setField={f}
+            imgPreview={imagePreview}
+            setImgPreview={(v) => { setImagePreview(v); if (!v) setImageFile(null); }}
+            locatingState={locating}
+            onGetLocation={getLocationForNew}
+            onSave={save}
+            onCancel={() => { setShowForm(false); setForm(defaultForm()); setImagePreview(null); setImageFile(null); }}
+            savingState={saving}
+            onPhotoClick={() => fileRef.current?.click()}
           />
         </div>
       )}
 
-      {/* Activity feed */}
+      {/* Feed */}
       {activities.length === 0 && !showForm ? (
         <div className="text-center py-16 text-muted-foreground">
           <Activity className="h-12 w-12 mx-auto mb-3 opacity-30" />
@@ -554,19 +549,26 @@ export default function Activities() {
         activities.map(a => (
           <div key={a.id} className="rounded-2xl border bg-card shadow-sm overflow-hidden">
 
-            {/* Editing mode */}
             {editingId === a.id ? (
               <div className="p-4">
                 <p className="text-sm font-semibold mb-4 text-foreground">Editing activity</p>
                 <input ref={editFileRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => handleImageChange(e.target.files?.[0], true)} />
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) { setEditImageFile(file); setEditImagePreview(URL.createObjectURL(file)); }
+                  }} />
                 <ActivityForm
-                  formData={editForm} setField={ef}
-                  imgPreview={editImagePreview} setImgPreview={setEditImagePreview}
-                  imgFile={editImageFile} onImageChange={file => handleImageChange(file, true)}
-                  locatingState={editLocating} setLocatingState={setEditLocating}
-                  onSave={saveEdit} onCancel={() => setEditingId(null)}
-                  savingState={editSaving} isEdit onLocationError={handleLocationError} fileInputRef={editFileRef}
+                  formData={editForm}
+                  setField={ef}
+                  imgPreview={editImagePreview}
+                  setImgPreview={(v) => { setEditImagePreview(v); if (!v) setEditImageFile(null); }}
+                  locatingState={editLocating}
+                  onGetLocation={getLocationForEdit}
+                  onSave={saveEdit}
+                  onCancel={() => setEditingId(null)}
+                  savingState={editSaving}
+                  isEdit
+                  onPhotoClick={() => editFileRef.current?.click()}
                 />
               </div>
             ) : (
@@ -597,20 +599,15 @@ export default function Activities() {
                   </div>
                 </div>
 
-                {/* Title */}
                 {a.title && <p className="px-4 pb-1 text-sm font-semibold text-foreground">{a.title}</p>}
-
-                {/* Description */}
                 {a.description && <p className="px-4 pb-2 text-sm text-foreground leading-relaxed">{a.description}</p>}
 
-                {/* Image */}
                 {a.image_url && (
                   <div className="w-full">
                     <img src={a.image_url} alt="activity" className="w-full max-h-80 object-cover" />
                   </div>
                 )}
 
-                {/* Stats bar */}
                 {activityStats(a).length > 0 && (
                   <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-3 border-t">
                     {activityStats(a).map(s => (
