@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Timer, Dumbbell, CalendarDays, ClipboardCheck, TrendingUp } from 'lucide-react';
+import { Trophy, Timer, Dumbbell, CalendarDays, ClipboardCheck, Calculator } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 // ─── IPPT scoring (same tables as calculator) ─────────────────────────────────
@@ -75,14 +75,9 @@ const typeColors: Record<string,string> = {
 };
 
 const quickActions = [
-  { label: 'BMI Calculator',  to: '/bmi',        icon: '🧮' },
-  { label: 'IPPT Calculator', to: '/ippt',        icon: '🏃' },
-  { label: 'Calorie Calc',    to: '/calories',    icon: '🍎' },
-  { label: 'Programmes',      to: '/programmes',  icon: '💪' },
-  { label: 'Leaderboard',     to: '/leaderboard', icon: '🏆' },
-  { label: 'Spartan',         to: '/spartan',     icon: '⚔️' },
-  { label: 'Schedule',        to: '/schedule',    icon: '📅' },
-  { label: 'Attendance',      to: '/attendance',  icon: '✅' },
+  { label: 'BMI Calculator',     to: '/bmi',      icon: '🧮' },
+  { label: 'IPPT Calculator',    to: '/ippt',     icon: '🏃' },
+  { label: 'Calorie Calculator', to: '/calories', icon: '🍎' },
 ];
 
 export default function PTDashboard() {
@@ -121,10 +116,10 @@ export default function PTDashboard() {
       {/* Quick Actions — top on mobile */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-5 w-5" /> Quick Actions</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base"><Calculator className="h-5 w-5" /> Calculators</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {quickActions.map(a => (
               <Link key={a.label} to={a.to}>
                 <div className="rounded-xl border p-2.5 text-center hover:bg-muted/50 active:scale-95 transition-all cursor-pointer">
