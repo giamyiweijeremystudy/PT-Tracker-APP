@@ -1,4 +1,4 @@
-import { LayoutDashboard, Calculator, Timer, Apple, User, LogOut, Shield, ChevronDown, Settings } from 'lucide-react';
+import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -7,18 +7,12 @@ import {
   SidebarGroupContent, SidebarGroupLabel, SidebarHeader,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
 } from '@/components/ui/sidebar';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 const mainItems = [
-  { title: 'Dashboard',             url: '/',        icon: LayoutDashboard },
-  { title: 'Profile & Statistics',  url: '/profile', icon: User            },
-];
-
-const calculatorItems = [
-  { title: 'BMI Calculator',     url: '/bmi',      icon: Calculator },
-  { title: 'IPPT Calculator',    url: '/ippt',     icon: Timer      },
-  { title: 'Calorie Calculator', url: '/calories', icon: Apple      },
+  { title: 'Dashboard',            url: '/',            icon: LayoutDashboard },
+  { title: 'Profile & Statistics', url: '/profile',     icon: User            },
+  { title: 'Calculators',          url: '/calculators', icon: Calculator      },
 ];
 
 export function AppSidebar() {
@@ -72,23 +66,6 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>{renderItems(mainItems)}</SidebarGroupContent>
         </SidebarGroup>
-
-        {/* Calculators collapsible */}
-        <Collapsible defaultOpen className="group/collapsible">
-          <SidebarGroup>
-            <CollapsibleTrigger asChild>
-              <SidebarGroupLabel className="cursor-pointer">
-                Calculators
-                {!collapsed && (
-                  <ChevronDown className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
-                )}
-              </SidebarGroupLabel>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <SidebarGroupContent>{renderItems(calculatorItems)}</SidebarGroupContent>
-            </CollapsibleContent>
-          </SidebarGroup>
-        </Collapsible>
       </SidebarContent>
 
       {/* Footer — profile + settings + sign out */}
