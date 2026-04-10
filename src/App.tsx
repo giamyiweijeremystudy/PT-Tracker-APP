@@ -10,9 +10,7 @@ import Signup from "./pages/Signup";
 import CompleteProfile from "./pages/CompleteProfile";
 import PTDashboard from "./pages/PTDashboard";
 import ProfileHistory from "./pages/ProfileHistory";
-import BmiCalculator from "./pages/BmiCalculator";
-import IpptCalculator from "./pages/IpptCalculator";
-import CalorieCalculator from "./pages/CalorieCalculator";
+import Calculators from "./pages/Calculators";
 import PTSettings from "./pages/PTSettings";
 import NotFound from "./pages/NotFound";
 
@@ -34,9 +32,7 @@ const App = () => (
           <Route path="/complete-profile" element={<CompleteProfile />} />
           <Route path="/"                 element={<P><PTDashboard /></P>} />
           <Route path="/profile"          element={<P><ProfileHistory /></P>} />
-          <Route path="/bmi"              element={<P><BmiCalculator /></P>} />
-          <Route path="/ippt"             element={<P><IpptCalculator /></P>} />
-          <Route path="/calories"         element={<P><CalorieCalculator /></P>} />
+          <Route path="/calculators" element={<P><Calculators /></P>} />
           <Route path="/settings"         element={<P><PTSettings /></P>} />
           <Route path="*"                 element={<NotFound />} />
         </Routes>
