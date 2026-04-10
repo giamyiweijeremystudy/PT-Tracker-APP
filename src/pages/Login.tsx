@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Receipt } from 'lucide-react';
-import loginBg from '@/assets/login-bg.png';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function Login() {
@@ -59,7 +58,7 @@ const handleGoogleSignIn = async () => {
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen items-center justify-center bg-background">
       {/* Left side - Login form */}
       <div className="flex w-full lg:w-1/2 items-center justify-center bg-background px-4 sm:px-8">
         <Card className="w-full max-w-md border-0 shadow-none bg-transparent">
@@ -118,20 +117,3 @@ const handleGoogleSignIn = async () => {
           </form>
         </Card>
       </div>
-
-      {/* Right side - Hero image */}
-      <div className="hidden lg:block lg:w-1/2 relative overflow-hidden">
-        <img
-          src={loginBg}
-          alt="Business professionals analyzing financial data on a rooftop with city skyline"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-        <div className="absolute bottom-12 left-8 right-8 text-white">
-          <h2 className="text-3xl font-bold tracking-tight">Streamline your expense management</h2>
-          <p className="mt-2 text-lg text-white/80">Submit, track, and approve expenses — all in one place.</p>
-        </div>
-      </div>
-    </div>
-  );
-}
