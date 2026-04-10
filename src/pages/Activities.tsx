@@ -285,18 +285,27 @@ const ActivityForm = ({
         </div>
       )}
 
-      {/* Location */}
-      <div className="space-y-2">
-        <Label>Location</Label>
-        <div className="flex gap-2">
-          <Input placeholder="e.g. Bishan Park" value={formData.location} onChange={e => setField('location', e.target.value)} />
-          <Button type="button" variant="outline" size="icon" disabled={locatingState}
-            onClick={() => fetchLocation(setLocatingState, setField, onLocationError)}
-            title="Use current location">
-            {locatingState ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
-          </Button>
-        </div>
-      </div>
+{/* Location */}
+<div className="space-y-2">
+  <Label>Location</Label>
+  <div className="flex gap-2">
+    <Input
+      placeholder="e.g. Bishan Park"
+      value={formData.location}
+      onChange={e => setField('location', e.target.value)}
+    />
+    <button
+      type="button"
+      disabled={locatingState}
+      onClick={() => fetchLocation(setLocatingState, setField, onLocationError)}
+      className="flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-muted shrink-0"
+    >
+      {locatingState
+        ? <Loader2 className="h-4 w-4 animate-spin" />
+        : <MapPin className="h-4 w-4" />}
+    </button>
+  </div>
+</div>
 
       {/* Description */}
       <div className="space-y-2">
