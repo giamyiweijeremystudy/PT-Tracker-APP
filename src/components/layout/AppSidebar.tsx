@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Calculator, Timer, Apple, Trophy, Sword,
+  LayoutDashboard, Calculator, Trophy, Sword,
   CalendarDays, Dumbbell, Bell, Thermometer, User, ClipboardCheck,
   Settings, LogOut, ChevronDown, Shield,
 } from 'lucide-react';
@@ -15,27 +15,22 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 const mainItems = [
-  { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Profile & Statistics', url: '/profile', icon: User },
-];
-
-const calculatorItems = [
-  { title: 'BMI Calculator', url: '/bmi', icon: Calculator },
-  { title: 'IPPT Calculator', url: '/ippt', icon: Timer },
-  { title: 'Calorie Calculator', url: '/calories', icon: Apple },
+  { title: 'Dashboard',           url: '/',            icon: LayoutDashboard },
+  { title: 'Profile & Statistics', url: '/profile',     icon: User            },
+  { title: 'Calculators',         url: '/calculators', icon: Calculator       },
 ];
 
 const trainingItems = [
-  { title: 'Training Schedule', url: '/schedule', icon: CalendarDays },
-  { title: 'Training Programmes', url: '/programmes', icon: Dumbbell },
-  { title: 'Leaderboard', url: '/leaderboard', icon: Trophy },
-  { title: 'Spartan Submissions', url: '/spartan', icon: Sword },
+  { title: 'Training Schedule',   url: '/schedule',    icon: CalendarDays  },
+  { title: 'Training Programmes', url: '/programmes',  icon: Dumbbell      },
+  { title: 'Leaderboard',         url: '/leaderboard', icon: Trophy        },
+  { title: 'Spartan Submissions', url: '/spartan',     icon: Sword         },
 ];
 
 const managementItems = [
-  { title: 'PT Attendance', url: '/attendance', icon: ClipboardCheck },
-  { title: 'Reminders', url: '/reminders', icon: Bell },
-  { title: 'Temperature & IFT', url: '/temperature', icon: Thermometer },
+  { title: 'PT Attendance',    url: '/attendance',  icon: ClipboardCheck },
+  { title: 'Reminders',        url: '/reminders',   icon: Bell           },
+  { title: 'Temperature & IFT', url: '/temperature', icon: Thermometer   },
 ];
 
 const bottomItems = [
@@ -49,7 +44,14 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { profile, signOut } = useAuth();
 
-  const isActive = (path: string) => location.pathname === path;
+  // Mark calculators active for all calc routes
+  const isActive = (path: string) => {
+    if (path === '/calculators') {
+      return ['/calculators', '/bmi', '/ippt', '/calories'].includes(location.pathname);
+    }
+    return location.pathname === path;
+  };
+
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
 
   const handleSignOut = async () => {
@@ -108,7 +110,6 @@ export function AppSidebar() {
           <SidebarGroupContent>{renderItems(mainItems)}</SidebarGroupContent>
         </SidebarGroup>
 
-        {renderCollapsible('Calculators', calculatorItems)}
         {renderCollapsible('Training', trainingItems)}
         {renderCollapsible('Management', managementItems)}
 
