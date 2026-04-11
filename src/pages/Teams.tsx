@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useTeam } from '@/context/TeamContext';
+import { useTeam } from '@/contexts/TeamContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
