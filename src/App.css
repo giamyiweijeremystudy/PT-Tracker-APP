@@ -1,42 +1,51 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import ProtectedRoute from "@/components/layout/ProtectedRoute";
+import AppLayout from "@/components/layout/AppLayout";
+import { TeamProvider } from "@/context/TeamContext";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import CompleteProfile from "./pages/CompleteProfile";
+import PTDashboard from "./pages/PTDashboard";
+import ProfileHistory from "./pages/ProfileHistory";
+import Calculators from "./pages/Calculators";
+import Activities from "./pages/Activities";
+import Teams from "./pages/Teams";
+import PTSettings from "./pages/PTSettings";
+import NotFound from "./pages/NotFound";
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
+const queryClient = new QueryClient();
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+const P = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute><AppLayout>{children}</AppLayout></ProtectedRoute>
+);
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <TeamProvider>
+          <Routes>
+            <Route path="/login"            element={<Login />} />
+            <Route path="/signup"           element={<Signup />} />
+            <Route path="/complete-profile" element={<CompleteProfile />} />
+            <Route path="/"                 element={<P><PTDashboard /></P>} />
+            <Route path="/profile"          element={<P><ProfileHistory /></P>} />
+            <Route path="/calculators"      element={<P><Calculators /></P>} />
+            <Route path="/activities"       element={<P><Activities /></P>} />
+            <Route path="/teams"            element={<P><Teams /></P>} />
+            <Route path="/settings"         element={<P><PTSettings /></P>} />
+            <Route path="*"                 element={<NotFound />} />
+          </Routes>
+        </TeamProvider>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
-}
+export default App;
