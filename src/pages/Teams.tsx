@@ -126,7 +126,7 @@ export default function Teams() {
   useEffect(() => { if (user) loadTeam(); }, [user]);
 
   const loadTeam = async () => {
-    setTeam(undefined); // loading state
+      if (team === null || team === undefined) setTeam(undefined); // only show loading on first mount
 
     const { data: memberRow } = await supabase
       .from('team_members')
