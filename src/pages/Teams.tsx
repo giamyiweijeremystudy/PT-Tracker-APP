@@ -227,6 +227,8 @@ export default function Teams() {
     if (membersData) setMembers(membersData as unknown as TeamMember[]);
   };
 
+  const leaveTeam = async () => {
+    await supabase.from('team_members').delete().eq('user_id', user!.id);
     toast({ title: 'Left team' });
     setTeam(null); setMembers([]); setFeed([]); setMyRole(null);
   };
