@@ -68,9 +68,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const reload = useCallback(async () => {
+const reload = useCallback(async (showSpinner = true) => {
     if (!user) return;
-    setLoading(true);
+    if (showSpinner) setLoading(true);
 
     const { data: memberRow } = await supabase
       .from('team_members')
@@ -133,7 +133,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .from('team_members')
       .insert({ team_id: newTeam.id, user_id: user!.id, role: 'admin' });
     if (joinError) return joinError.message;
-    await reload();
+    await reload(false);
     return null;
   };
 
@@ -149,7 +149,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .from('team_members')
       .insert({ team_id: foundTeam.id, user_id: user!.id, role: 'member' });
     if (joinError) return joinError.message;
-    await reload();
+    await reload(false);  
     return null;
   };
 
