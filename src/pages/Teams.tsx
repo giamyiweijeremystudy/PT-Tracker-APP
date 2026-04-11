@@ -193,7 +193,7 @@ export default function Teams() {
       toast({ title: 'Error', description: joinError.message, variant: 'destructive' }); return;
     }
     toast({ title: `Team "${newTeam.name}" created!` });
-    await loadTeam();
+    window.location.reload();
   };
 
   const joinTeam = async () => {
@@ -213,7 +213,7 @@ export default function Teams() {
       toast({ title: 'Error', description: msg, variant: 'destructive' }); return;
     }
     toast({ title: `Joined "${foundTeam.name}"!` });
-    await loadTeam();
+    window.location.reload();
   };
 
   const leaveTeam = async () => {
