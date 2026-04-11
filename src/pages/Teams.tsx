@@ -123,15 +123,50 @@ export default function Teams() {
   const [editDesc, setEditDesc]     = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
-  useEffect(() => { if (user) loadTeam(); }, [user]);
+  // Cache key for this user's team membership
+  const cacheKey = user ? `team_cache_${user.id}` : null;
+
+  useEffect(() => {
+    if (!user || !cacheKey) return;
+    // Try cache first — prevents flicker on tab switch
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const { team: t, myRole: r, members: m } = JSON.parse(cached);
+        setTeam(t);
+        setMyRole(r);
+        setMembers(m);
+        // Still refresh feed in background
+        if (t && m?.length > 0) refreshFeed(m.map((x: any) => x.user_id), m);
+        return;
+      } catch {}
+    }
+    loadTeam();
+  }, [user]);
+
+  const refreshFeed = async (memberIds: string[], membersList: TeamMember[]) => {
+    const { data: activities } = await supabase
+      .from('activities')
+      .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
+      .in('user_id', memberIds)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (activities) {
+      setFeed(activities.map(a => ({
+        ...a,
+        profile: membersList.find((m: any) => m.user_id === a.user_id)?.profile,
+      })) as TeamActivity[]);
+    }
+  };
 
   const loadTeam = async () => {
-      if (team === null || team === undefined) setTeam(undefined); // only show loading on first mount
+    if (!user || !cacheKey) return;
+    setTeam(undefined);
 
     const { data: memberRow } = await supabase
       .from('team_members')
       .select('*, team:teams(*)')
-      .eq('user_id', user!.id)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     if (!memberRow) {
@@ -139,12 +174,14 @@ export default function Teams() {
       setMembers([]);
       setFeed([]);
       setMyRole(null);
+      sessionStorage.removeItem(cacheKey);
       return;
     }
 
     const teamData = memberRow.team as unknown as Team;
+    const role = memberRow.role as 'admin'|'member';
     setTeam(teamData);
-    setMyRole(memberRow.role as 'admin'|'member');
+    setMyRole(role);
 
     const { data: membersData } = await supabase
       .from('team_members')
@@ -156,22 +193,11 @@ export default function Teams() {
     const membersList = (membersData ?? []) as unknown as TeamMember[];
     setMembers(membersList);
 
-    const memberIds = membersList.map((m: any) => m.user_id);
-    if (memberIds.length > 0) {
-      const { data: activities } = await supabase
-        .from('activities')
-        .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
-        .in('user_id', memberIds)
-        .order('created_at', { ascending: false })
-        .limit(50);
+    // Save to session cache
+    sessionStorage.setItem(cacheKey, JSON.stringify({ team: teamData, myRole: role, members: membersList }));
 
-      if (activities) {
-        setFeed(activities.map(a => ({
-          ...a,
-          profile: membersList.find((m: any) => m.user_id === a.user_id)?.profile,
-        })) as TeamActivity[]);
-      }
-    }
+    const memberIds = membersList.map((m: any) => m.user_id);
+    if (memberIds.length > 0) await refreshFeed(memberIds, membersList);
   };
 
   const createTeam = async () => {
@@ -193,10 +219,13 @@ export default function Teams() {
       toast({ title: 'Error', description: joinError.message, variant: 'destructive' }); return;
     }
     toast({ title: `Team "${newTeam.name}" created!` });
-    setTeam(newTeam as Team);
+    const t = newTeam as Team;
+    const myMember: TeamMember = { id: '', team_id: newTeam.id, user_id: user!.id, role: 'admin', joined_at: new Date().toISOString(), profile: { full_name: (profile as any)?.full_name ?? '', rank: (profile as any)?.rank ?? '', age: (profile as any)?.age ?? null, ippt_pushups: (profile as any)?.ippt_pushups ?? null, ippt_situps: (profile as any)?.ippt_situps ?? null, ippt_run_seconds: (profile as any)?.ippt_run_seconds ?? null } };
+    setTeam(t);
     setMyRole('admin');
-    setMembers([{ id: '', team_id: newTeam.id, user_id: user!.id, role: 'admin', joined_at: new Date().toISOString(), profile: { full_name: (profile as any)?.full_name ?? '', rank: (profile as any)?.rank ?? '', age: (profile as any)?.age ?? null, ippt_pushups: (profile as any)?.ippt_pushups ?? null, ippt_situps: (profile as any)?.ippt_situps ?? null, ippt_run_seconds: (profile as any)?.ippt_run_seconds ?? null } }]);
+    setMembers([myMember]);
     setFeed([]);
+    if (cacheKey) sessionStorage.setItem(cacheKey, JSON.stringify({ team: t, myRole: 'admin', members: [myMember] }));
   };
 
   const joinTeam = async () => {
@@ -216,20 +245,24 @@ export default function Teams() {
       toast({ title: 'Error', description: msg, variant: 'destructive' }); return;
     }
     toast({ title: `Joined "${foundTeam.name}"!` });
-    setTeam(foundTeam as Team);
+    const t = foundTeam as Team;
+    setTeam(t);
     setMyRole('member');
     setFeed([]);
-    // Load full members list
     const { data: membersData } = await supabase
       .from('team_members')
       .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
       .eq('team_id', foundTeam.id);
-    if (membersData) setMembers(membersData as unknown as TeamMember[]);
+    const membersList = (membersData ?? []) as unknown as TeamMember[];
+    setMembers(membersList);
+    if (cacheKey) sessionStorage.setItem(cacheKey, JSON.stringify({ team: t, myRole: 'member', members: membersList }));
+    if (membersList.length > 0) await refreshFeed(membersList.map((m: any) => m.user_id), membersList);
   };
 
   const leaveTeam = async () => {
     await supabase.from('team_members').delete().eq('user_id', user!.id);
     toast({ title: 'Left team' });
+    if (cacheKey) sessionStorage.removeItem(cacheKey);
     setTeam(null); setMembers([]); setFeed([]); setMyRole(null);
   };
 
@@ -237,6 +270,7 @@ export default function Teams() {
     if (!team) return;
     await supabase.from('teams').delete().eq('id', team.id);
     toast({ title: 'Team deleted' });
+    if (cacheKey) sessionStorage.removeItem(cacheKey);
     setTeam(null); setMembers([]); setFeed([]); setMyRole(null);
   };
 
