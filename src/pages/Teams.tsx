@@ -96,7 +96,7 @@ export default function Teams() {
   }
 
   // ── No team ──────────────────────────────────────────────────────────────────
-  if (!team) {
+if (!loading && !team) {
     return (
       <div className="max-w-lg mx-auto space-y-6 pt-2">
         <div className="flex items-center gap-3">
