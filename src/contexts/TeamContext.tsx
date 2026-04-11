@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -71,7 +71,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [feed, setFeed]       = useState<TeamActivity[]>([]);
   const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded]   = useState(false);
+  const loadedRef             = useRef(false);
 
   const refreshFeed = useCallback(async () => {
     if (members.length === 0) return;
@@ -91,7 +91,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   }, [members]);
 
   useEffect(() => {
-    if (!user || loaded) return;
+    if (!user || loadedRef.current) return;
     loadOnce();
   }, [user]);
 
@@ -105,7 +105,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
     if (!memberRow) {
       setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-      setLoading(false); setLoaded(true); return;
+      setLoading(false); loadedRef.current = true; return;
     }
 
     const teamData = memberRow.team as unknown as Team;
@@ -140,7 +140,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     }
 
     setLoading(false);
-    setLoaded(true);
+    loadedRef.current = true;
   };
 
   const createTeam = async (name: string, description: string): Promise<string | null> => {
@@ -155,7 +155,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     setTeam(newTeam as Team);
     setMyRole('admin');
     setMembers([]);
-    setLoaded(true);
+    loadedRef.current = true;
     return null;
   };
 
@@ -171,7 +171,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .from('team_members')
       .insert({ team_id: foundTeam.id, user_id: user!.id, role: 'member' });
     if (joinError) return joinError.message;
-    setLoaded(false);
+    loadedRef.current = false;
     await loadOnce();
     return null;
   };
@@ -180,7 +180,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     if (!team) return;
     await supabase.from('team_members').delete().eq('team_id', team.id).eq('user_id', user!.id);
     setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-    setLoaded(false);
+    loadedRef.current = true;
   };
 
   const deleteTeam = async () => {
@@ -188,7 +188,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     await supabase.from('team_members').delete().eq('team_id', team.id);
     await supabase.from('teams').delete().eq('id', team.id);
     setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-    setLoaded(false);
+    loadedRef.current = true;
   };
 
   const removeMember = async (userId: string) => {
