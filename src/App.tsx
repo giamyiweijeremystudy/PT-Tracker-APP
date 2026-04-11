@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
+import { TeamProvider } from "@/contexts/TeamContext";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -27,6 +28,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <TeamProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login"            element={<Login />} />
@@ -41,6 +43,7 @@ const App = () => (
           <Route path="/teams" element={<P><Teams /></P>} />
         </Routes>
       </BrowserRouter>
+      </TeamProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
