@@ -193,7 +193,10 @@ export default function Teams() {
       toast({ title: 'Error', description: joinError.message, variant: 'destructive' }); return;
     }
     toast({ title: `Team "${newTeam.name}" created!` });
-    window.location.reload();
+    setTeam(newTeam as Team);
+    setMyRole('admin');
+    setMembers([{ id: '', team_id: newTeam.id, user_id: user!.id, role: 'admin', joined_at: new Date().toISOString(), profile: { full_name: (profile as any)?.full_name ?? '', rank: (profile as any)?.rank ?? '', age: (profile as any)?.age ?? null, ippt_pushups: (profile as any)?.ippt_pushups ?? null, ippt_situps: (profile as any)?.ippt_situps ?? null, ippt_run_seconds: (profile as any)?.ippt_run_seconds ?? null } }]);
+    setFeed([]);
   };
 
   const joinTeam = async () => {
@@ -213,11 +216,17 @@ export default function Teams() {
       toast({ title: 'Error', description: msg, variant: 'destructive' }); return;
     }
     toast({ title: `Joined "${foundTeam.name}"!` });
-    window.location.reload();
+    setTeam(foundTeam as Team);
+    setMyRole('member');
+    setFeed([]);
+    // Load full members list
+    const { data: membersData } = await supabase
+      .from('team_members')
+      .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
+      .eq('team_id', foundTeam.id);
+    if (membersData) setMembers(membersData as unknown as TeamMember[]);
   };
 
-  const leaveTeam = async () => {
-    await supabase.from('team_members').delete().eq('user_id', user!.id);
     toast({ title: 'Left team' });
     setTeam(null); setMembers([]); setFeed([]); setMyRole(null);
   };
