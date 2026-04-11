@@ -53,6 +53,12 @@ type TeamContextValue = {
   setFeed: (f: TeamActivity[]) => void;
   setMyRole: (r: 'admin' | 'member' | null) => void;
   refreshFeed: () => Promise<void>;
+  createTeam: (name: string, description: string) => Promise<string | null>;
+  joinTeam: (inviteCode: string) => Promise<string | null>;
+  leaveTeam: () => Promise<void>;
+  deleteTeam: () => Promise<void>;
+  removeMember: (userId: string) => Promise<void>;
+  updateTeam: (name: string, description: string) => Promise<void>;
 };
 
 const TeamContext = createContext<TeamContextValue | null>(null);
@@ -65,7 +71,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [feed, setFeed]       = useState<TeamActivity[]>([]);
   const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded]   = useState(false); // only load once per session
+  const [loaded, setLoaded]   = useState(false);
 
   const refreshFeed = useCallback(async () => {
     if (members.length === 0) return;
@@ -137,8 +143,72 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     setLoaded(true);
   };
 
+  const createTeam = async (name: string, description: string): Promise<string | null> => {
+    const inviteCode = Math.random().toString(36).substring(2, 10);
+    const { data: newTeam, error } = await supabase
+      .from('teams')
+      .insert({ name, description, invite_code: inviteCode, created_by: user!.id })
+      .select()
+      .single();
+    if (error) return error.message;
+    await supabase.from('team_members').insert({ team_id: newTeam.id, user_id: user!.id, role: 'admin' });
+    setTeam(newTeam as Team);
+    setMyRole('admin');
+    setMembers([]);
+    setLoaded(true);
+    return null;
+  };
+
+  const joinTeam = async (inviteCode: string): Promise<string | null> => {
+    const { data: foundTeam, error } = await supabase
+      .from('teams')
+      .select('*')
+      .eq('invite_code', inviteCode.trim())
+      .maybeSingle();
+    if (error) return error.message;
+    if (!foundTeam) return 'Invalid invite code';
+    const { error: joinError } = await supabase
+      .from('team_members')
+      .insert({ team_id: foundTeam.id, user_id: user!.id, role: 'member' });
+    if (joinError) return joinError.message;
+    setLoaded(false);
+    await loadOnce();
+    return null;
+  };
+
+  const leaveTeam = async () => {
+    if (!team) return;
+    await supabase.from('team_members').delete().eq('team_id', team.id).eq('user_id', user!.id);
+    setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
+    setLoaded(false);
+  };
+
+  const deleteTeam = async () => {
+    if (!team) return;
+    await supabase.from('team_members').delete().eq('team_id', team.id);
+    await supabase.from('teams').delete().eq('id', team.id);
+    setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
+    setLoaded(false);
+  };
+
+  const removeMember = async (userId: string) => {
+    if (!team) return;
+    await supabase.from('team_members').delete().eq('team_id', team.id).eq('user_id', userId);
+    setMembers(prev => prev.filter(m => m.user_id !== userId));
+  };
+
+  const updateTeam = async (name: string, description: string) => {
+    if (!team) return;
+    await supabase.from('teams').update({ name, description }).eq('id', team.id);
+    setTeam({ ...team, name, description });
+  };
+
   return (
-    <TeamContext.Provider value={{ team, members, feed, myRole, loading, setTeam, setMembers, setFeed, setMyRole, refreshFeed }}>
+    <TeamContext.Provider value={{
+      team, members, feed, myRole, loading,
+      setTeam, setMembers, setFeed, setMyRole, refreshFeed,
+      createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam,
+    }}>
       {children}
     </TeamContext.Provider>
   );
