@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -48,11 +48,7 @@ type TeamContextValue = {
   feed: TeamActivity[];
   myRole: 'admin' | 'member' | null;
   loading: boolean;
-  setTeam: (t: Team | null) => void;
-  setMembers: (m: TeamMember[]) => void;
-  setFeed: (f: TeamActivity[]) => void;
-  setMyRole: (r: 'admin' | 'member' | null) => void;
-  refreshFeed: () => Promise<void>;
+  reload: () => Promise<void>;
   createTeam: (name: string, description: string) => Promise<string | null>;
   joinTeam: (inviteCode: string) => Promise<string | null>;
   leaveTeam: () => Promise<void>;
@@ -71,47 +67,25 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [feed, setFeed]       = useState<TeamActivity[]>([]);
   const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
   const [loading, setLoading] = useState(true);
-  const loadedRef             = useRef(false);
 
-  const refreshFeed = useCallback(async () => {
-    if (members.length === 0) return;
-    const memberIds = members.map(m => m.user_id);
-    const { data } = await supabase
-      .from('activities')
-      .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
-      .in('user_id', memberIds)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (data) {
-      setFeed(data.map(a => ({
-        ...a,
-        profile: members.find(m => m.user_id === a.user_id)?.profile,
-      })) as TeamActivity[]);
-    }
-  }, [members]);
-
-  useEffect(() => {
-    if (!user || loadedRef.current) return;
-    loadOnce();
-  }, [user]);
-
-  const loadOnce = async () => {
+  const reload = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
+
     const { data: memberRow } = await supabase
       .from('team_members')
       .select('*, team:teams(*)')
-      .eq('user_id', user!.id)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     if (!memberRow) {
       setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-      setLoading(false); loadedRef.current = true; return;
+      setLoading(false); return;
     }
 
     const teamData = memberRow.team as unknown as Team;
-    const role = memberRow.role as 'admin' | 'member';
     setTeam(teamData);
-    setMyRole(role);
+    setMyRole(memberRow.role as 'admin' | 'member');
 
     const { data: membersData } = await supabase
       .from('team_members')
@@ -124,11 +98,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     setMembers(membersList);
 
     if (membersList.length > 0) {
-      const memberIds = membersList.map(m => m.user_id);
       const { data: activities } = await supabase
         .from('activities')
         .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
-        .in('user_id', memberIds)
+        .in('user_id', membersList.map(m => m.user_id))
         .order('created_at', { ascending: false })
         .limit(50);
       if (activities) {
@@ -137,11 +110,16 @@ export function TeamProvider({ children }: { children: ReactNode }) {
           profile: membersList.find(m => m.user_id === a.user_id)?.profile,
         })) as TeamActivity[]);
       }
+    } else {
+      setFeed([]);
     }
 
     setLoading(false);
-    loadedRef.current = true;
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) reload();
+  }, [user, reload]);
 
   const createTeam = async (name: string, description: string): Promise<string | null> => {
     const inviteCode = Math.random().toString(36).substring(2, 10);
@@ -151,9 +129,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .select()
       .single();
     if (error) return error.message;
-    await supabase.from('team_members').insert({ team_id: newTeam.id, user_id: user!.id, role: 'admin' });
-    loadedRef.current = false;
-    await loadOnce();
+    const { error: joinError } = await supabase
+      .from('team_members')
+      .insert({ team_id: newTeam.id, user_id: user!.id, role: 'admin' });
+    if (joinError) return joinError.message;
+    await reload();
     return null;
   };
 
@@ -169,8 +149,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .from('team_members')
       .insert({ team_id: foundTeam.id, user_id: user!.id, role: 'member' });
     if (joinError) return joinError.message;
-    loadedRef.current = false;
-    await loadOnce();
+    await reload();
     return null;
   };
 
@@ -178,7 +157,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     if (!team) return;
     await supabase.from('team_members').delete().eq('team_id', team.id).eq('user_id', user!.id);
     setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-    loadedRef.current = true;
+    setLoading(false);
   };
 
   const deleteTeam = async () => {
@@ -186,7 +165,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     await supabase.from('team_members').delete().eq('team_id', team.id);
     await supabase.from('teams').delete().eq('id', team.id);
     setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-    loadedRef.current = true;
+    setLoading(false);
   };
 
   const removeMember = async (userId: string) => {
@@ -202,11 +181,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TeamContext.Provider value={{
-      team, members, feed, myRole, loading,
-      setTeam, setMembers, setFeed, setMyRole, refreshFeed,
-      createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam,
-    }}>
+    <TeamContext.Provider value={{ team, members, feed, myRole, loading, reload, createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam }}>
       {children}
     </TeamContext.Provider>
   );
