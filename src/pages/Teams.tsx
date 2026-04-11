@@ -36,6 +36,7 @@ export default function Teams() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
   const { team, members, feed, myRole, loading, createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam } = useTeam();
+  if (loading) return <div className="max-w-2xl mx-auto pt-16 text-center text-muted-foreground"><Users className="h-8 w-8 mx-auto mb-2 opacity-30 animate-pulse" /><p className="text-sm">Loading...</p></div>;
 
   const isAdmin = (profile as any)?.is_admin === true;
 
@@ -86,17 +87,8 @@ export default function Teams() {
 
   const initials = (name: string) => name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
-  if (loading) {
-    return (
-      <div className="max-w-2xl mx-auto pt-16 text-center text-muted-foreground">
-        <Users className="h-8 w-8 mx-auto mb-2 opacity-30 animate-pulse" />
-        <p className="text-sm">Loading...</p>
-      </div>
-    );
-  }
-
   // ── No team ──────────────────────────────────────────────────────────────────
-if (!loading && !team) {
+  if (!team) {
     return (
       <div className="max-w-lg mx-auto space-y-6 pt-2">
         <div className="flex items-center gap-3">
