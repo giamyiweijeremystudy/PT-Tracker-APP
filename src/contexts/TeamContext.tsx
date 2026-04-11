@@ -48,44 +48,70 @@ type TeamContextValue = {
   feed: TeamActivity[];
   myRole: 'admin' | 'member' | null;
   loading: boolean;
-  reload: () => Promise<void>;
   createTeam: (name: string, description: string) => Promise<string | null>;
-  joinTeam: (inviteCode: string) => Promise<string | null>;
+  joinTeam: (code: string) => Promise<string | null>;
   leaveTeam: () => Promise<void>;
   deleteTeam: () => Promise<void>;
   removeMember: (userId: string) => Promise<void>;
   updateTeam: (name: string, description: string) => Promise<void>;
+  refreshFeed: () => Promise<void>;
 };
 
 const TeamContext = createContext<TeamContextValue | null>(null);
 
 export function TeamProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const [team, setTeam]       = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [feed, setFeed]       = useState<TeamActivity[]>([]);
   const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded]   = useState(false);
 
-const reload = useCallback(async (showSpinner = true) => {
-    if (!user) return;
-    if (showSpinner) setLoading(true);
+  useEffect(() => {
+    if (!user || loaded) return;
+    loadOnce();
+  }, [user]);
 
+  const loadFeed = async (membersList: TeamMember[]) => {
+    if (membersList.length === 0) return;
+    const memberIds = membersList.map(m => m.user_id);
+    const { data } = await supabase
+      .from('activities')
+      .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
+      .in('user_id', memberIds)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data) {
+      setFeed(data.map(a => ({
+        ...a,
+        profile: membersList.find(m => m.user_id === a.user_id)?.profile,
+      })) as TeamActivity[]);
+    }
+  };
+
+  const refreshFeed = useCallback(async () => {
+    await loadFeed(members);
+  }, [members]);
+
+  const loadOnce = async () => {
+    setLoading(true);
     const { data: memberRow } = await supabase
       .from('team_members')
       .select('*, team:teams(*)')
-      .eq('user_id', user.id)
+      .eq('user_id', user!.id)
       .maybeSingle();
 
     if (!memberRow) {
       setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-      setLoading(false); return;
+      setLoading(false); setLoaded(true); return;
     }
 
     const teamData = memberRow.team as unknown as Team;
+    const role = memberRow.role as 'admin' | 'member';
     setTeam(teamData);
-    setMyRole(memberRow.role as 'admin' | 'member');
+    setMyRole(role);
 
     const { data: membersData } = await supabase
       .from('team_members')
@@ -96,92 +122,90 @@ const reload = useCallback(async (showSpinner = true) => {
 
     const membersList = (membersData ?? []) as unknown as TeamMember[];
     setMembers(membersList);
-
-    if (membersList.length > 0) {
-      const { data: activities } = await supabase
-        .from('activities')
-        .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
-        .in('user_id', membersList.map(m => m.user_id))
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (activities) {
-        setFeed(activities.map(a => ({
-          ...a,
-          profile: membersList.find(m => m.user_id === a.user_id)?.profile,
-        })) as TeamActivity[]);
-      }
-    } else {
-      setFeed([]);
-    }
+    await loadFeed(membersList);
 
     setLoading(false);
-  }, [user]);
-
-  useEffect(() => {
-    if (user) reload();
-  }, [user, reload]);
+    setLoaded(true);
+  };
 
   const createTeam = async (name: string, description: string): Promise<string | null> => {
-    const inviteCode = Math.random().toString(36).substring(2, 10);
+    if (!user) return 'Not logged in';
     const { data: newTeam, error } = await supabase
       .from('teams')
-      .insert({ name, description, invite_code: inviteCode, created_by: user!.id })
-      .select()
-      .single();
-    if (error) return error.message;
+      .insert({ name: name.trim(), description: description.trim(), created_by: user.id })
+      .select().single();
+    if (error || !newTeam) return error?.message ?? 'Failed to create team';
     const { error: joinError } = await supabase
       .from('team_members')
-      .insert({ team_id: newTeam.id, user_id: user!.id, role: 'admin' });
+      .insert({ team_id: newTeam.id, user_id: user.id, role: 'admin' });
     if (joinError) return joinError.message;
-    await reload(false);
+    const myMember: TeamMember = {
+      id: '', team_id: newTeam.id, user_id: user.id, role: 'admin',
+      joined_at: new Date().toISOString(),
+      profile: {
+        full_name: (profile as any)?.full_name ?? '',
+        rank: (profile as any)?.rank ?? '',
+        age: (profile as any)?.age ?? null,
+        ippt_pushups: (profile as any)?.ippt_pushups ?? null,
+        ippt_situps: (profile as any)?.ippt_situps ?? null,
+        ippt_run_seconds: (profile as any)?.ippt_run_seconds ?? null,
+      },
+    };
+    setTeam(newTeam as Team);
+    setMyRole('admin');
+    setMembers([myMember]);
+    setFeed([]);
     return null;
   };
 
-  const joinTeam = async (inviteCode: string): Promise<string | null> => {
+  const joinTeam = async (code: string): Promise<string | null> => {
+    if (!user) return 'Not logged in';
     const { data: foundTeam, error } = await supabase
-      .from('teams')
-      .select('*')
-      .eq('invite_code', inviteCode.trim())
-      .maybeSingle();
-    if (error) return error.message;
-    if (!foundTeam) return 'Invalid invite code';
+      .from('teams').select('*').eq('invite_code', code.trim().toLowerCase()).single();
+    if (error || !foundTeam) return 'Invalid invite code';
     const { error: joinError } = await supabase
+      .from('team_members').insert({ team_id: foundTeam.id, user_id: user.id, role: 'member' });
+    if (joinError) return joinError.message.includes('unique') ? 'You are already in a team' : joinError.message;
+    setTeam(foundTeam as Team);
+    setMyRole('member');
+    const { data: membersData } = await supabase
       .from('team_members')
-      .insert({ team_id: foundTeam.id, user_id: user!.id, role: 'member' });
-    if (joinError) return joinError.message;
-    await reload(false);  
+      .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
+      .eq('team_id', foundTeam.id);
+    const membersList = (membersData ?? []) as unknown as TeamMember[];
+    setMembers(membersList);
+    await loadFeed(membersList);
     return null;
   };
 
   const leaveTeam = async () => {
-    if (!team) return;
-    await supabase.from('team_members').delete().eq('team_id', team.id).eq('user_id', user!.id);
-    setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-    setLoading(false);
+    if (!user) return;
+    await supabase.from('team_members').delete().eq('user_id', user.id);
+    setTeam(null); setMembers([]); setFeed([]); setMyRole(null);
   };
 
   const deleteTeam = async () => {
     if (!team) return;
-    await supabase.from('team_members').delete().eq('team_id', team.id);
     await supabase.from('teams').delete().eq('id', team.id);
-    setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-    setLoading(false);
+    setTeam(null); setMembers([]); setFeed([]); setMyRole(null);
   };
 
   const removeMember = async (userId: string) => {
     if (!team) return;
-    await supabase.from('team_members').delete().eq('team_id', team.id).eq('user_id', userId);
-    setMembers(prev => prev.filter(m => m.user_id !== userId));
+    await supabase.from('team_members').delete().eq('user_id', userId).eq('team_id', team.id);
+    const updated = members.filter(m => m.user_id !== userId);
+    setMembers(updated);
+    await loadFeed(updated);
   };
 
   const updateTeam = async (name: string, description: string) => {
     if (!team) return;
-    await supabase.from('teams').update({ name, description }).eq('id', team.id);
-    setTeam({ ...team, name, description });
+    await supabase.from('teams').update({ name: name.trim(), description: description.trim() }).eq('id', team.id);
+    setTeam(t => t ? { ...t, name: name.trim(), description: description.trim() } : t);
   };
 
   return (
-    <TeamContext.Provider value={{ team, members, feed, myRole, loading, reload, createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam }}>
+    <TeamContext.Provider value={{ team, members, feed, myRole, loading, createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam, refreshFeed }}>
       {children}
     </TeamContext.Provider>
   );
