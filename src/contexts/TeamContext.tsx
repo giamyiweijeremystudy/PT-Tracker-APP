@@ -152,10 +152,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .single();
     if (error) return error.message;
     await supabase.from('team_members').insert({ team_id: newTeam.id, user_id: user!.id, role: 'admin' });
-    setTeam(newTeam as Team);
-    setMyRole('admin');
-    setMembers([]);
-    loadedRef.current = true;
+    loadedRef.current = false;
+    await loadOnce();
     return null;
   };
 
