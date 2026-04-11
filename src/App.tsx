@@ -12,6 +12,7 @@ import PTDashboard from "./pages/PTDashboard";
 import ProfileHistory from "./pages/ProfileHistory";
 import Calculators from "./pages/Calculators";
 import PTSettings from "./pages/PTSettings";
+import Teams from "./pages/Teams";
 import NotFound from "./pages/NotFound";
 import Activities from "./pages/Activities";
 
@@ -31,12 +32,13 @@ const App = () => (
           <Route path="/login"            element={<Login />} />
           <Route path="/signup"           element={<Signup />} />
           <Route path="/complete-profile" element={<CompleteProfile />} />
-          <Route path="/"                 element={<P><PTDashboard /></P>} />
+          <Route path="/"                 element={<P><PTDashboard /></P>} /> 
           <Route path="/profile"          element={<P><ProfileHistory /></P>} />
           <Route path="/calculators" element={<P><Calculators /></P>} />
           <Route path="/activities" element={<P><Activities /></P>} />
           <Route path="/settings"         element={<P><PTSettings /></P>} />
           <Route path="*"                 element={<NotFound />} />
+          <Route path="/teams" element={<P><Teams /></P>} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
