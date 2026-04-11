@@ -4,17 +4,18 @@ import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
-  SidebarGroupContent, SidebarGroupLabel, SidebarHeader,
+  SidebarGroupContent, SidebarHeader,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
 } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useState } from 'react';
 
 const mainItems = [
   { title: 'Dashboard',            url: '/',            icon: LayoutDashboard },
   { title: 'Profile & Statistics', url: '/profile',     icon: User            },
   { title: 'Calculators',          url: '/calculators', icon: Calculator      },
   { title: 'Activities',           url: '/activities',  icon: Activity        },
-  { title: 'Teams', url: '/teams', icon: Users },
+  { title: 'Teams',                url: '/teams',       icon: Users           },
 ];
 
 export function AppSidebar() {
@@ -24,6 +25,8 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { profile, signOut } = useAuth();
 
+  const [settingsTaps, setSettingsTaps] = useState(0);
+
   const isActive = (path: string) => location.pathname === path;
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
 
@@ -32,24 +35,20 @@ export function AppSidebar() {
     navigate('/login');
   };
 
-  const renderItems = (items: typeof mainItems) => (
-    <SidebarMenu>
-      {items.map(item => (
-        <SidebarMenuItem key={item.url}>
-          <SidebarMenuButton asChild isActive={isActive(item.url)}>
-            <NavLink to={item.url} end>
-              <item.icon className="h-4 w-4" />
-              {!collapsed && <span>{item.title}</span>}
-            </NavLink>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ))}
-    </SidebarMenu>
-  );
+  const handleSettingsTap = () => {
+    const next = settingsTaps + 1;
+    setSettingsTaps(next);
+    if (next >= 5) {
+      // Navigate to settings with secret panel unlocked via URL state
+      navigate('/settings', { state: { secretUnlocked: true } });
+      setSettingsTaps(0);
+    } else {
+      navigate('/settings');
+    }
+  };
 
   return (
     <Sidebar collapsible="icon">
-      {/* Header */}
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -63,17 +62,27 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
 
-      {/* Main nav */}
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupContent>{renderItems(mainItems)}</SidebarGroupContent>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {mainItems.map(item => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                    <NavLink to={item.url} end>
+                      <item.icon className="h-4 w-4" />
+                      {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Footer — profile + settings + sign out */}
       <SidebarFooter>
         <SidebarMenu>
-          {/* Profile row with settings icon */}
           <SidebarMenuItem>
             <div className="flex items-center gap-2 px-2 py-1.5">
               <Avatar className="h-7 w-7 shrink-0">
@@ -83,17 +92,19 @@ export function AppSidebar() {
                 <>
                   <div className="flex flex-col leading-tight flex-1 min-w-0">
                     <span className="text-sm font-medium truncate">{profile?.full_name || 'User'}</span>
-                    <span className="text-xs text-sidebar-foreground/60 truncate">{profile?.rank}</span>
+                    <span className="text-xs text-sidebar-foreground/60 truncate">{(profile as any)?.rank}</span>
                   </div>
-                  <NavLink to="/settings">
+                  <button
+                    onClick={handleSettingsTap}
+                    className="p-1 rounded hover:bg-sidebar-accent transition-colors"
+                    title="Settings"
+                  >
                     <Settings className={`h-4 w-4 shrink-0 transition-colors ${location.pathname === '/settings' ? 'text-primary' : 'text-sidebar-foreground/60 hover:text-sidebar-foreground'}`} />
-                  </NavLink>
+                  </button>
                 </>
               )}
             </div>
           </SidebarMenuItem>
-
-          {/* Sign out */}
           <SidebarMenuItem>
             <SidebarMenuButton onClick={handleSignOut}>
               <LogOut className="h-4 w-4" />
