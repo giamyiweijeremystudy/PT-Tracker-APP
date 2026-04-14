@@ -23,6 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
   Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords, Star, Pin, AlertCircle,
+  BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon,
 } from 'lucide-react';
 
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
@@ -104,6 +105,25 @@ type TeamSubmission = {
 
 type Tab = 'activities' | 'members' | 'submissions' | 'schedule';
 type TeamRole = 'admin' | 'pt_ic' | 'spartan' | 'member';
+
+// ── Team posts (polls, notices, questions) ────────────────────────────────────
+type PostType = 'poll' | 'notice' | 'question';
+
+type PollOption = { id: string; post_id: string; label: string; position: number };
+type PollVote   = { id: string; post_id: string; option_id: string; user_id: string };
+type QAnswer    = { id: string; post_id: string; user_id: string; answer: string; created_at: string };
+
+type TeamPost = {
+  id: string; team_id: string; created_by: string;
+  post_type: PostType; title: string; body: string;
+  is_pinned: boolean; pin_until: string | null;
+  allow_multi: boolean; created_at: string;
+  // hydrated client-side
+  options?: PollOption[];
+  votes?:   PollVote[];
+  answers?: QAnswer[];
+};
+
 
 // ─── Role display helpers ─────────────────────────────────────────────────────
 
@@ -305,6 +325,22 @@ export default function Teams() {
     toast({ title: 'Role updated' });
   };
 
+  // Posts (polls, notices, questions)
+  const [posts, setPosts]                 = useState<TeamPost[]>([]);
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [postType, setPostType]           = useState<PostType>('poll');
+  const [postTitle, setPostTitle]         = useState('');
+  const [postBody, setPostBody]           = useState('');
+  const [postPinned, setPostPinned]       = useState(false);
+  const [postPinUntil, setPostPinUntil]   = useState('');
+  const [postMulti, setPostMulti]         = useState(false);
+  const [pollOptions, setPollOptions]     = useState<string[]>(['', '']);
+  const [postSaving, setPostSaving]       = useState(false);
+  // per-post interaction state
+  const [selectedVotes, setSelectedVotes] = useState<Record<string, string[]>>({});
+  const [answerDrafts, setAnswerDrafts]   = useState<Record<string, string>>({});
+  const [submittingPost, setSubmittingPost] = useState<string | null>(null);
+
   // ── Events + Submissions ─────────────────────────────────────────────────────
 
   const fetchEvents = useCallback(async () => {
@@ -323,6 +359,127 @@ export default function Teams() {
   }, [team, user]);
 
   useEffect(() => { if (team) { fetchEvents(); fetchSubmissions(); } }, [team, fetchEvents, fetchSubmissions]);
+  useEffect(() => { if (team) { fetchEvents(); fetchSubmissions(); fetchPosts(); } }, [team, fetchEvents, fetchSubmissions]);
+
+  // ── Posts ─────────────────────────────────────────────────────────────────
+
+  const fetchPosts = useCallback(async () => {
+    if (!team) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const { data: postsData } = await supabase
+      .from('team_posts').select('*').eq('team_id', team.id)
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (!postsData) return;
+
+    const postIds = postsData.map((p: any) => p.id);
+    const [optRes, voteRes, ansRes] = await Promise.all([
+      supabase.from('team_poll_options').select('*').in('post_id', postIds).order('position'),
+      supabase.from('team_poll_votes').select('*').in('post_id', postIds),
+      supabase.from('team_question_answers').select('*').in('post_id', postIds),
+    ]);
+
+    const options  = (optRes.data  ?? []) as PollOption[];
+    const votes    = (voteRes.data ?? []) as PollVote[];
+    const answers  = (ansRes.data  ?? []) as QAnswer[];
+
+    const hydrated: TeamPost[] = postsData.map((p: any) => ({
+      ...p,
+      options:  options.filter(o => o.post_id === p.id),
+      votes:    votes.filter(v => v.post_id === p.id),
+      answers:  answers.filter(a => a.post_id === p.id),
+    }));
+
+    // Filter out expired notices
+    const visible = hydrated.filter(p =>
+      p.post_type !== 'notice' || !p.pin_until || p.pin_until >= todayStr
+    );
+    setPosts(visible);
+
+    // Pre-fill user's existing votes
+    const myVoteMap: Record<string, string[]> = {};
+    votes.filter(v => v.user_id === user?.id).forEach(v => {
+      if (!myVoteMap[v.post_id]) myVoteMap[v.post_id] = [];
+      myVoteMap[v.post_id].push(v.option_id);
+    });
+    setSelectedVotes(prev => ({ ...myVoteMap, ...Object.fromEntries(Object.entries(prev).filter(([k]) => !myVoteMap[k])) }));
+  }, [team, user]);
+
+  const handleCreatePost = async () => {
+    if (!team || !user || !postTitle.trim()) {
+      toast({ title: 'Enter a title', variant: 'destructive' }); return;
+    }
+    if (postType === 'poll' && pollOptions.filter(o => o.trim()).length < 2) {
+      toast({ title: 'Add at least 2 options', variant: 'destructive' }); return;
+    }
+    setPostSaving(true);
+    const { data: newPost, error } = await supabase.from('team_posts').insert({
+      team_id: team.id, created_by: user.id,
+      post_type: postType, title: postTitle.trim(), body: postBody.trim(),
+      is_pinned: postPinned, pin_until: postPinned && postType === 'notice' ? postPinUntil || null : null,
+      allow_multi: postType === 'poll' ? postMulti : false,
+    }).select().single();
+    if (error || !newPost) { toast({ title: 'Error', description: error?.message, variant: 'destructive' }); setPostSaving(false); return; }
+
+    if (postType === 'poll') {
+      const opts = pollOptions.filter(o => o.trim()).map((label, i) => ({ post_id: newPost.id, label: label.trim(), position: i }));
+      await supabase.from('team_poll_options').insert(opts);
+    }
+    setPostSaving(false);
+    toast({ title: `${postType === 'poll' ? 'Poll' : postType === 'notice' ? 'Notice' : 'Question'} posted!` });
+    setShowPostModal(false);
+    setPostTitle(''); setPostBody(''); setPostPinned(false); setPostPinUntil(''); setPostMulti(false); setPollOptions(['', '']);
+    fetchPosts();
+  };
+
+  const handleVote = async (post: TeamPost, optionId: string) => {
+    if (!user) return;
+    const myVotes = selectedVotes[post.id] ?? [];
+    const alreadyVoted = myVotes.includes(optionId);
+
+    if (alreadyVoted) {
+      // Remove vote
+      await supabase.from('team_poll_votes').delete()
+        .eq('post_id', post.id).eq('option_id', optionId).eq('user_id', user.id);
+      setSelectedVotes(prev => ({ ...prev, [post.id]: myVotes.filter(v => v !== optionId) }));
+    } else {
+      if (!post.allow_multi) {
+        // Single select — remove previous vote first
+        if (myVotes.length > 0) {
+          await supabase.from('team_poll_votes').delete()
+            .eq('post_id', post.id).eq('user_id', user.id);
+        }
+        await supabase.from('team_poll_votes').insert({ post_id: post.id, option_id: optionId, user_id: user.id });
+        setSelectedVotes(prev => ({ ...prev, [post.id]: [optionId] }));
+      } else {
+        await supabase.from('team_poll_votes').insert({ post_id: post.id, option_id: optionId, user_id: user.id });
+        setSelectedVotes(prev => ({ ...prev, [post.id]: [...myVotes, optionId] }));
+      }
+    }
+    fetchPosts();
+  };
+
+  const handleSubmitAnswer = async (post: TeamPost) => {
+    if (!user) return;
+    const answer = (answerDrafts[post.id] ?? '').trim();
+    if (!answer) { toast({ title: 'Enter an answer', variant: 'destructive' }); return; }
+    setSubmittingPost(post.id);
+    const existing = post.answers?.find(a => a.user_id === user.id);
+    if (existing) {
+      await supabase.from('team_question_answers').update({ answer }).eq('id', existing.id);
+    } else {
+      await supabase.from('team_question_answers').insert({ post_id: post.id, user_id: user.id, answer });
+    }
+    setSubmittingPost(null);
+    setAnswerDrafts(prev => ({ ...prev, [post.id]: '' }));
+    toast({ title: 'Answer submitted!' });
+    fetchPosts();
+  };
+
+  const handleDeletePost = async (id: string) => {
+    await supabase.from('team_posts').delete().eq('id', id);
+    fetchPosts();
+  };
 
   const handleAddEvent = async () => {
     if (!evtTitle.trim() || !evtDate || !team || !user) {
@@ -584,8 +741,146 @@ export default function Teams() {
         const todayStr = today.toISOString().split('T')[0];
         const pinnedEvents = events.filter(e => e.is_important && e.event_date >= todayStr)
           .sort((a, b) => a.event_date.localeCompare(b.event_date));
+        const pinnedPosts = posts.filter(p => p.is_pinned);
+        const unpinnedPosts = posts.filter(p => !p.is_pinned);
+
+        const renderPost = (p: TeamPost) => {
+          const myVotes = selectedVotes[p.id] ?? [];
+          const myAnswer = p.answers?.find(a => a.user_id === user?.id);
+          const totalVotes = p.votes?.length ?? 0;
+
+          return (
+            <div key={p.id} className={`rounded-2xl border bg-card shadow-sm overflow-hidden ${p.is_pinned ? 'border-yellow-400' : ''}`}>
+              {/* Header */}
+              <div className="flex items-start gap-3 px-4 pt-4 pb-3">
+                <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-white
+                  ${p.post_type==='poll'?'bg-violet-500':p.post_type==='notice'?'bg-orange-500':'bg-teal-500'}`}>
+                  {p.post_type==='poll' ? <BarChart2 className="h-4 w-4" /> : p.post_type==='notice' ? <Bell className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {p.is_pinned && <Pin className="h-3.5 w-3.5 text-yellow-500 shrink-0" />}
+                    <span className="text-sm font-semibold">{p.title}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+                      ${p.post_type==='poll'?'bg-violet-100 text-violet-700':p.post_type==='notice'?'bg-orange-100 text-orange-700':'bg-teal-100 text-teal-700'}`}>
+                      {p.post_type==='poll'?'Poll':p.post_type==='notice'?'Notice':'Question'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {new Date(p.created_at).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}
+                    {p.post_type==='notice' && p.pin_until && ` · Until ${new Date(p.pin_until).toLocaleDateString('en-SG',{day:'numeric',month:'short'})}`}
+                  </p>
+                </div>
+                {canManage && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive transition-colors shrink-0">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete this post?</AlertDialogTitle>
+                        <AlertDialogDescription>This will remove the {p.post_type} and all responses permanently.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeletePost(p.id)} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
+
+              {/* Body */}
+              {p.body && <p className="px-4 pb-3 text-sm text-muted-foreground">{p.body}</p>}
+
+              {/* Poll options */}
+              {p.post_type === 'poll' && p.options && (
+                <div className="px-4 pb-4 space-y-2">
+                  <p className="text-xs text-muted-foreground">{p.allow_multi ? 'Select all that apply' : 'Select one'} · {totalVotes} vote{totalVotes !== 1 ? 's' : ''}</p>
+                  {p.options.map(opt => {
+                    const optVotes = p.votes?.filter(v => v.option_id === opt.id).length ?? 0;
+                    const pct = totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
+                    const voted = myVotes.includes(opt.id);
+                    return (
+                      <button key={opt.id} onClick={() => handleVote(p, opt.id)}
+                        className={`w-full text-left rounded-lg border px-3 py-2 transition-colors relative overflow-hidden
+                          ${voted ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'}`}>
+                        <div className="absolute inset-0 rounded-lg transition-all" style={{ width: `${pct}%`, backgroundColor: voted ? 'hsl(var(--primary)/0.12)' : 'hsl(var(--muted))' }} />
+                        <div className="relative flex items-center justify-between gap-2">
+                          <span className={`text-sm ${voted ? 'font-semibold text-primary' : ''}`}>{opt.label}</span>
+                          <span className="text-xs text-muted-foreground tabular-nums">{pct}% ({optVotes})</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Question answer box */}
+              {p.post_type === 'question' && (
+                <div className="px-4 pb-4 space-y-2">
+                  {myAnswer ? (
+                    <div className="rounded-lg bg-teal-50 dark:bg-teal-900/20 border border-teal-200 px-3 py-2">
+                      <p className="text-xs text-teal-600 font-medium mb-0.5">Your answer</p>
+                      <p className="text-sm">{myAnswer.answer}</p>
+                      <button className="text-xs text-muted-foreground underline mt-1"
+                        onClick={() => setAnswerDrafts(prev => ({ ...prev, [p.id]: myAnswer.answer }))}>
+                        Edit
+                      </button>
+                    </div>
+                  ) : null}
+                  {(!myAnswer || (answerDrafts[p.id] ?? '') !== '') && (
+                    <div className="flex gap-2">
+                      <Textarea
+                        placeholder="Type your answer..."
+                        rows={2}
+                        value={answerDrafts[p.id] ?? ''}
+                        onChange={e => setAnswerDrafts(prev => ({ ...prev, [p.id]: e.target.value }))}
+                        className="flex-1 text-sm resize-none"
+                      />
+                      <Button size="icon" className="shrink-0 self-end"
+                        disabled={submittingPost === p.id}
+                        onClick={() => handleSubmitAnswer(p)}>
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                  {canManage && (p.answers?.length ?? 0) > 0 && (
+                    <details className="mt-1">
+                      <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                        {p.answers?.length} answer{(p.answers?.length ?? 0) !== 1 ? 's' : ''} submitted
+                      </summary>
+                      <div className="mt-2 space-y-1.5">
+                        {p.answers?.map(a => {
+                          const member = members.find(m => m.user_id === a.user_id);
+                          return (
+                            <div key={a.id} className="rounded bg-muted px-3 py-2 text-sm">
+                              <span className="font-medium text-xs">{member?.profile?.full_name ?? 'Member'}: </span>
+                              {a.answer}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        };
+
         return (
         <div className="space-y-4">
+
+          {/* Create post button — admin/PT IC only */}
+          {canManage && (
+            <Button variant="outline" size="sm" className="w-full" onClick={() => setShowPostModal(true)}>
+              <Plus className="h-4 w-4 mr-2" /> Create Poll / Notice / Question
+            </Button>
+          )}
+
           {/* Pinned important events */}
           {pinnedEvents.map(e => (
             <div key={e.id} className="flex items-start gap-3 rounded-xl border-2 border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 shadow-sm">
@@ -605,7 +900,10 @@ export default function Teams() {
             </div>
           ))}
 
-          {feed.length === 0 ? (
+          {/* Pinned posts */}
+          {pinnedPosts.map(renderPost)}
+
+          {feed.length === 0 && unpinnedPosts.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
               <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm font-medium">No activities yet</p>
@@ -653,6 +951,10 @@ export default function Teams() {
             })}
           </div>
           )}
+
+          {/* Unpinned posts — below feed */}
+          {unpinnedPosts.map(renderPost)}
+
         </div>
         );
       })()}
@@ -1113,6 +1415,98 @@ export default function Teams() {
           </div>
         );
       })()}
+
+      {/* ── Create Post Modal ── */}
+      {showPostModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setShowPostModal(false)}>
+          <div className="w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
+              <h2 className="text-base font-semibold">Create Post</h2>
+              <button onClick={() => setShowPostModal(false)} className="p-1 rounded hover:bg-muted">
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto max-h-[80vh]">
+
+              {/* Post type selector */}
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { type: 'poll',     icon: <BarChart2 className="h-4 w-4" />,     label: 'Poll',     color: 'border-violet-400 bg-violet-50 text-violet-700' },
+                    { type: 'notice',   icon: <Bell className="h-4 w-4" />,          label: 'Notice',   color: 'border-orange-400 bg-orange-50 text-orange-700' },
+                    { type: 'question', icon: <MessageSquare className="h-4 w-4" />, label: 'Question', color: 'border-teal-400 bg-teal-50 text-teal-700' },
+                  ] as const).map(({ type, icon, label, color }) => (
+                    <button key={type} onClick={() => setPostType(type)}
+                      className={`flex flex-col items-center gap-1 py-3 rounded-xl border-2 text-xs font-semibold transition-colors
+                        ${postType === type ? color : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}>
+                      {icon}{label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Title */}
+              <div className="space-y-1.5">
+                <Label>{postType === 'poll' ? 'Question / Title' : postType === 'notice' ? 'Notice Title' : 'Question Prompt'}</Label>
+                <Input placeholder={postType === 'poll' ? 'e.g. What time should we meet?' : postType === 'notice' ? 'e.g. PT cancelled tomorrow' : 'e.g. What is your IPPT goal?'} value={postTitle} onChange={e => setPostTitle(e.target.value)} />
+              </div>
+
+              {/* Body — notices and questions */}
+              {(postType === 'notice' || postType === 'question') && (
+                <div className="space-y-1.5">
+                  <Label>{postType === 'notice' ? 'Body' : 'Additional context'} <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Textarea rows={3} placeholder={postType === 'notice' ? 'Details...' : 'Any context for your question...'} value={postBody} onChange={e => setPostBody(e.target.value)} />
+                </div>
+              )}
+
+              {/* Poll options */}
+              {postType === 'poll' && (
+                <div className="space-y-2">
+                  <Label>Options</Label>
+                  {pollOptions.map((opt, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input placeholder={`Option ${i + 1}`} value={opt} onChange={e => { const o = [...pollOptions]; o[i] = e.target.value; setPollOptions(o); }} />
+                      {pollOptions.length > 2 && (
+                        <button onClick={() => setPollOptions(pollOptions.filter((_, j) => j !== i))} className="p-2 rounded hover:bg-muted text-muted-foreground">
+                          <XIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {pollOptions.length < 8 && (
+                    <Button variant="outline" size="sm" onClick={() => setPollOptions([...pollOptions, ''])}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Add option
+                    </Button>
+                  )}
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
+                    <Checkbox checked={postMulti} onCheckedChange={v => setPostMulti(!!v)} />
+                    <span className="text-sm">Allow multiple selections</span>
+                  </label>
+                </div>
+              )}
+
+              {/* Pin options */}
+              <div className="space-y-2 pt-1 border-t">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={postPinned} onCheckedChange={v => setPostPinned(!!v)} />
+                  <span className="text-sm">Pin to top of Activities</span>
+                </label>
+                {postPinned && postType === 'notice' && (
+                  <div className="space-y-1.5 pl-6">
+                    <Label className="text-xs">Pin until (date)</Label>
+                    <Input type="date" value={postPinUntil} onChange={e => setPostPinUntil(e.target.value)} className="max-w-[180px]" />
+                  </div>
+                )}
+              </div>
+
+              <Button onClick={handleCreatePost} disabled={postSaving} className="w-full">
+                {postSaving ? 'Posting...' : `Post ${postType === 'poll' ? 'Poll' : postType === 'notice' ? 'Notice' : 'Question'}`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
