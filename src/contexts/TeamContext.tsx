@@ -266,6 +266,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
     await supabase.from('profiles').update({ team_id: foundTeam.id }).eq('id', userId);
 
+    // Sync all existing team events to this user's personal calendar
+    await supabase.rpc('sync_all_team_events_to_user', { _team_id: foundTeam.id, _user_id: userId });
+
     await fetchTeamData(userId);
     return null;
   };
