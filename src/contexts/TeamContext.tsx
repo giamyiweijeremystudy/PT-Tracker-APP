@@ -307,6 +307,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   const updateMemberRole = async (userId: string, teamRoles: string[]) => {
     if (!team) return;
+    // Never strip admin role — admin is permanent until team is deleted
+    const target = members.find(m => m.user_id === userId);
+    const isTargetAdmin = Array.isArray(target?.team_role) && target.team_role.includes('admin');
+    if (isTargetAdmin && !teamRoles.includes('admin')) {
+      teamRoles = ['admin', ...teamRoles.filter(r => r !== 'admin')];
+    }
     // Enforce only 1 PT IC — remove pt_ic from any existing holder first
     if (teamRoles.includes('pt_ic')) {
       const existing = members.find(m => m.user_id !== userId && Array.isArray(m.team_role) && m.team_role.includes('pt_ic'));
