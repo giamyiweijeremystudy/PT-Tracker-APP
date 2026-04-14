@@ -1,5 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export type Team = {
@@ -59,72 +58,115 @@ type TeamContextValue = {
 
 const TeamContext = createContext<TeamContextValue | null>(null);
 
-// ─── localStorage helpers ─────────────────────────────────────────────────────
-
-type CachedState = {
-  team: Team | null;
-  myRole: 'admin' | 'member' | null;
-  members: TeamMember[];
-};
-
-function getCache(userId: string): CachedState | null {
-  try {
-    const raw = localStorage.getItem(`pt_team_${userId}`);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-function setCache(userId: string, state: CachedState) {
-  try { localStorage.setItem(`pt_team_${userId}`, JSON.stringify(state)); } catch {}
-}
-
-function clearCache(userId: string) {
-  try { localStorage.removeItem(`pt_team_${userId}`); } catch {}
-}
-
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function TeamProvider({ children }: { children: ReactNode }) {
-  const { user, profile } = useAuth();
+  const [team, setTeam]       = useState<Team | null>(null);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [feed, setFeed]       = useState<TeamActivity[]>([]);
+  const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [team, _setTeam]       = useState<Team | null>(null);
-  const [members, _setMembers] = useState<TeamMember[]>([]);
-  const [feed, setFeed]        = useState<TeamActivity[]>([]);
-  const [myRole, _setMyRole]   = useState<'admin' | 'member' | null>(null);
-  const [loading, setLoading]  = useState(true);
-  const initializedForUser = useRef<string | null>(null);
+  // ── Core fetch ──────────────────────────────────────────────────────────────
 
-  // Helpers that keep cache in sync
-  const persist = (t: Team | null, r: 'admin'|'member'|null, m: TeamMember[]) => {
-    _setTeam(t); _setMyRole(r); _setMembers(m);
-    if (user) setCache(user.id, { team: t, myRole: r, members: m });
-  };
+  const fetchTeamData = useCallback(async (userId: string) => {
+    const { data: memberRow } = await supabase
+      .from('team_members')
+      .select('*, team:teams(*)')
+      .eq('user_id', userId)
+      .maybeSingle();
 
-  useEffect(() => {
-    if (!user) return;
-    // Prevent running twice for the same user (auth fires onAuthStateChange + getSession)
-    if (initializedForUser.current === user.id) return;
-    initializedForUser.current = user.id;
-
-    // 1. Apply cache immediately so UI never shows join screen on refresh
-    const cached = getCache(user.id);
-    if (cached) {
-      _setTeam(cached.team);
-      _setMyRole(cached.myRole);
-      _setMembers(cached.members);
-      setLoading(false);
-      // Refresh in background — don't block UI
-      syncFromSupabase(user.id, cached.members);
+    if (!memberRow) {
+      setTeam(null);
+      setMyRole(null);
+      setMembers([]);
+      setFeed([]);
       return;
     }
 
-    // 2. No cache — load fresh (first login ever)
-    loadFresh(user.id);
-  }, [user?.id]);
+    const teamData = memberRow.team as unknown as Team;
+    const role = memberRow.role as 'admin' | 'member';
 
-  const fetchFeed = async (membersList: TeamMember[]) => {
-    if (membersList.length === 0) { setFeed([]); return; }
-    const ids = membersList.map(m => m.user_id);
+    const { data: membersData } = await supabase
+      .from('team_members')
+      .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
+      .eq('team_id', teamData.id)
+      .order('role', { ascending: true })
+      .order('joined_at', { ascending: true });
+
+    const membersList = (membersData ?? []) as unknown as TeamMember[];
+
+    setTeam(teamData);
+    setMyRole(role);
+    setMembers(membersList);
+
+    if (membersList.length > 0) {
+      const ids = membersList.map(m => m.user_id);
+      const { data: activityData } = await supabase
+        .from('activities')
+        .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
+        .in('user_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (activityData) {
+        setFeed(activityData.map(a => ({
+          ...a,
+          profile: membersList.find(m => m.user_id === a.user_id)?.profile,
+        })) as TeamActivity[]);
+      }
+    }
+  }, []);
+
+  // ── Auth listener — single source of truth ──────────────────────────────────
+  // Listen to onAuthStateChange directly (not via useAuth) so the session is
+  // guaranteed to be active on the Supabase client before we query.
+
+  useEffect(() => {
+    let ignore = false;
+
+    // Handle initial page load / refresh
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (ignore) return;
+      if (session?.user) {
+        await fetchTeamData(session.user.id);
+      }
+      setLoading(false);
+    });
+
+    // Handle login / logout / token refresh events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (ignore) return;
+
+        if (event === 'SIGNED_IN') {
+          if (session?.user) {
+            setLoading(true);
+            await fetchTeamData(session.user.id);
+            setLoading(false);
+          }
+        }
+
+        if (event === 'SIGNED_OUT') {
+          setTeam(null);
+          setMyRole(null);
+          setMembers([]);
+          setFeed([]);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      ignore = true;
+      subscription.unsubscribe();
+    };
+  }, [fetchTeamData]);
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
+
+  const refreshFeed = useCallback(async () => {
+    if (members.length === 0) return;
+    const ids = members.map(m => m.user_id);
     const { data } = await supabase
       .from('activities')
       .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
@@ -134,129 +176,74 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     if (data) {
       setFeed(data.map(a => ({
         ...a,
-        profile: membersList.find(m => m.user_id === a.user_id)?.profile,
+        profile: members.find(m => m.user_id === a.user_id)?.profile,
       })) as TeamActivity[]);
     }
-  };
-
-  // Called silently in background when cache exists
-const syncFromSupabase = async (userId: string, currentMembers: TeamMember[]) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return;
-
-  const { data: memberRow } = await supabase
-    .from('team_members')
-    .select('*, team:teams(*)')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (!memberRow) {
-    persist(null, null, []);
-    clearCache(userId);
-    setFeed([]);
-    return;
-  }
-
-  const teamData = memberRow.team as unknown as Team;
-  const role = memberRow.role as 'admin' | 'member';
-
-  const { data: membersData } = await supabase
-    .from('team_members')
-    .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
-    .eq('team_id', teamData.id)
-    .order('role', { ascending: true })
-    .order('joined_at', { ascending: true });
-
-  const membersList = (membersData ?? []) as unknown as TeamMember[];
-  persist(teamData, role, membersList);
-  await fetchFeed(membersList);
-};
-
-  // Called when no cache exists
-  const loadFresh = async (userId: string) => {
-    setLoading(true);
-    await syncFromSupabase(userId, []);
-    setLoading(false);
-  };
-
-  const refreshFeed = useCallback(async () => {
-    await fetchFeed(members);
   }, [members]);
 
   const createTeam = async (name: string, description: string): Promise<string | null> => {
-    if (!user) return 'Not logged in';
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return 'Not logged in';
+    const user = session.user;
+
     const { data: newTeam, error } = await supabase
       .from('teams')
       .insert({ name: name.trim(), description: description.trim(), created_by: user.id })
       .select().single();
     if (error || !newTeam) return error?.message ?? 'Failed to create team';
+
     const { error: joinError } = await supabase
       .from('team_members')
       .insert({ team_id: newTeam.id, user_id: user.id, role: 'admin' });
     if (joinError) return joinError.message;
-    const myMember: TeamMember = {
-      id: '', team_id: newTeam.id, user_id: user.id, role: 'admin',
-      joined_at: new Date().toISOString(),
-      profile: {
-        full_name: (profile as any)?.full_name ?? '',
-        rank: (profile as any)?.rank ?? '',
-        age: (profile as any)?.age ?? null,
-        ippt_pushups: (profile as any)?.ippt_pushups ?? null,
-        ippt_situps: (profile as any)?.ippt_situps ?? null,
-        ippt_run_seconds: (profile as any)?.ippt_run_seconds ?? null,
-      },
-    };
-    persist(newTeam as Team, 'admin', [myMember]);
-    setFeed([]);
+
+    await fetchTeamData(user.id);
     return null;
   };
 
   const joinTeam = async (code: string): Promise<string | null> => {
-    if (!user) return 'Not logged in';
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return 'Not logged in';
+    const user = session.user;
+
     const { data: foundTeam, error } = await supabase
       .from('teams').select('*').eq('invite_code', code.trim().toLowerCase()).single();
     if (error || !foundTeam) return 'Invalid invite code';
+
     const { error: joinError } = await supabase
       .from('team_members').insert({ team_id: foundTeam.id, user_id: user.id, role: 'member' });
     if (joinError) return joinError.message.includes('unique') ? 'You are already in a team' : joinError.message;
-    const { data: membersData } = await supabase
-      .from('team_members')
-      .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
-      .eq('team_id', foundTeam.id);
-    const membersList = (membersData ?? []) as unknown as TeamMember[];
-    persist(foundTeam as Team, 'member', membersList);
-    await fetchFeed(membersList);
+
+    await fetchTeamData(user.id);
     return null;
   };
 
   const leaveTeam = async () => {
-    if (!user) return;
-    await supabase.from('team_members').delete().eq('user_id', user.id);
-    persist(null, null, []);
-    clearCache(user.id);
-    setFeed([]);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    await supabase.from('team_members').delete().eq('user_id', session.user.id);
+    setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
   };
 
   const deleteTeam = async () => {
-    if (!team || !user) return;
+    if (!team) return;
     await supabase.from('teams').delete().eq('id', team.id);
-    persist(null, null, []);
-    clearCache(user.id);
-    setFeed([]);
+    setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
   };
 
   const removeMember = async (userId: string) => {
     if (!team) return;
     await supabase.from('team_members').delete().eq('user_id', userId).eq('team_id', team.id);
     const updated = members.filter(m => m.user_id !== userId);
-    persist(team, myRole, updated);
-    await fetchFeed(updated);
+    setMembers(updated);
+    if (updated.length > 0) await refreshFeed();
+    else setFeed([]);
   };
 
   const updateTeam = async (name: string, description: string) => {
     if (!team) return;
     await supabase.from('teams').update({ name: name.trim(), description: description.trim() }).eq('id', team.id);
-    persist({ ...team, name: name.trim(), description: description.trim() }, myRole, members);
+    setTeam({ ...team, name: name.trim(), description: description.trim() });
   };
 
   return (
