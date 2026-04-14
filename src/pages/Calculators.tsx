@@ -101,7 +101,7 @@ export default function Calculators() {
 
   // ── BMI state ────────────────────────────────────────────────────────────────
   const [height, setHeight] = useState(170);
-  const [weight, setWeight] = useState(70);
+  const [weight, setWeight] = useState(70.0);
   const [bmiSaved, setBmiSaved] = useState<BmiResult[]>([]);
   const [bmiSaving, setBmiSaving] = useState(false);
   const [bmiDeleting, setBmiDeleting] = useState<string|null>(null);
@@ -234,38 +234,53 @@ export default function Calculators() {
             <CardContent className="space-y-4">
               {/* Age */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Age</Label>
-                  <span className="text-sm font-bold text-primary">{ipptAge} <span className="text-xs font-normal text-muted-foreground">({ageGroupLabel(ipptAge)})</span></span>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Age <span className="text-xs font-normal text-muted-foreground">({ageGroupLabel(ipptAge)})</span></Label>
+                  <input type="number" min={18} max={60} value={ipptAge}
+                    onChange={e=>setIpptAge(Math.min(60,Math.max(18,parseInt(e.target.value)||18)))}
+                    className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
                 <Slider min={18} max={60} step={1} value={[ipptAge]} onValueChange={([v])=>setIpptAge(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>18</span><span>60</span></div>
               </div>
               {/* Push-ups */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Push-ups <span className="text-xs text-muted-foreground">(max 25 pts)</span></Label>
-                  <span className="text-sm font-bold text-primary tabular-nums">{pushups}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Push-ups <span className="text-xs font-normal text-muted-foreground">(max 25 pts)</span></Label>
+                  <input type="number" min={0} max={100} value={pushups}
+                    onChange={e=>setPushups(Math.min(100,Math.max(0,parseInt(e.target.value)||0)))}
+                    className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
                 <Slider min={0} max={100} step={1} value={[pushups]} onValueChange={([v])=>setPushups(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>0</span><span>100</span></div>
               </div>
               {/* Sit-ups */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Sit-ups <span className="text-xs text-muted-foreground">(max 25 pts)</span></Label>
-                  <span className="text-sm font-bold text-primary tabular-nums">{situps}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Sit-ups <span className="text-xs font-normal text-muted-foreground">(max 25 pts)</span></Label>
+                  <input type="number" min={0} max={100} value={situps}
+                    onChange={e=>setSitups(Math.min(100,Math.max(0,parseInt(e.target.value)||0)))}
+                    className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
                 </div>
                 <Slider min={0} max={100} step={1} value={[situps]} onValueChange={([v])=>setSitups(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>0</span><span>100</span></div>
               </div>
-              {/* Run */}
+              {/* Run — type MM:SS, slider in seconds per-second */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>2.4km Run <span className="text-xs text-muted-foreground">(max 50 pts)</span></Label>
-                  <span className="text-sm font-bold text-primary tabular-nums">{fmtRunTime(runSecs)}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>2.4km Run <span className="text-xs font-normal text-muted-foreground">(max 50 pts)</span></Label>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min={0} max={39} value={Math.floor(runSecs/60)}
+                      onChange={e=>{const m=Math.min(39,Math.max(0,parseInt(e.target.value)||0));setRunSecs(Math.min(2400,Math.max(240,m*60+(runSecs%60))));}}
+                      className="w-14 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <span className="text-muted-foreground font-bold">:</span>
+                    <input type="number" min={0} max={59} value={String(runSecs%60).padStart(2,'0')}
+                      onChange={e=>{const s=Math.min(59,Math.max(0,parseInt(e.target.value)||0));setRunSecs(Math.min(2400,Math.max(240,Math.floor(runSecs/60)*60+s)));}}
+                      className="w-14 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <span className="text-xs text-muted-foreground">mm:ss</span>
+                  </div>
                 </div>
-                <Slider min={240} max={2400} step={10} value={[runSecs]} onValueChange={([v])=>setRunSecs(v)} />
+                <Slider min={240} max={2400} step={1} value={[runSecs]} onValueChange={([v])=>setRunSecs(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>4:00 (fastest)</span><span>40:00 (slowest)</span></div>
               </div>
 
@@ -389,20 +404,30 @@ export default function Calculators() {
             <CardContent className="space-y-4">
               {/* Height */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <Label>Height</Label>
-                  <span className="text-sm font-bold text-primary">{height} <span className="text-xs font-normal text-muted-foreground">cm</span></span>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min={100} max={220} value={height}
+                      onChange={e=>setHeight(Math.min(220,Math.max(100,parseInt(e.target.value)||100)))}
+                      className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <span className="text-xs text-muted-foreground">cm</span>
+                  </div>
                 </div>
                 <Slider min={100} max={220} step={1} value={[height]} onValueChange={([v])=>setHeight(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>100</span><span>220</span></div>
               </div>
               {/* Weight */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <Label>Weight</Label>
-                  <span className="text-sm font-bold text-primary">{weight} <span className="text-xs font-normal text-muted-foreground">kg</span></span>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min={30} max={200} step={0.1} value={weight}
+                      onChange={e=>setWeight(Math.min(200,Math.max(30,parseFloat(e.target.value)||30)))}
+                      className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <span className="text-xs text-muted-foreground">kg</span>
+                  </div>
                 </div>
-                <Slider min={30} max={200} step={1} value={[weight]} onValueChange={([v])=>setWeight(v)} />
+                <Slider min={30} max={200} step={0.1} value={[weight]} onValueChange={([v])=>setWeight(parseFloat(v.toFixed(1)))} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>30</span><span>200</span></div>
               </div>
 
