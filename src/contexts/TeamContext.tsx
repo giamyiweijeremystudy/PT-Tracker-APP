@@ -174,6 +174,31 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     };
   }, [fetchTeamData]);
 
+  // ── Realtime feed subscription ───────────────────────────────────────────────
+  // Prepends new activities from team members to the feed live.
+
+  useEffect(() => {
+    if (members.length === 0) return;
+
+    const memberIds = members.map(m => m.user_id);
+
+    const channel = supabase
+      .channel('team-activities')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'activities' },
+        (payload) => {
+          const newActivity = payload.new as TeamActivity;
+          if (!memberIds.includes(newActivity.user_id)) return;
+          const profile = members.find(m => m.user_id === newActivity.user_id)?.profile;
+          setFeed(prev => [{ ...newActivity, profile }, ...prev].slice(0, 50));
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [members]);
+
   // ── Actions ─────────────────────────────────────────────────────────────────
 
   const refreshFeed = useCallback(async () => {
