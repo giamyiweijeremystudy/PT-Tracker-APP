@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTeam } from '@/contexts/TeamContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -21,7 +22,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
-  Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords,
+  Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords, Star, Pin, AlertCircle,
 } from 'lucide-react';
 
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
@@ -42,6 +43,64 @@ function calcIpptAward(pu:number,su:number,runSec:number,age:number){const idx=g
 const AWARD_STYLE:Record<string,string>={Gold:'bg-yellow-400 text-yellow-900',Silver:'bg-slate-300 text-slate-800',Pass:'bg-green-100 text-green-800',Fail:'bg-red-100 text-red-800'};
 const fmtTime=(sec:number|null)=>sec?`${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`:'—';
 const ACTIVITY_EMOJIS:Record<string,string>={running:'🏃',jogging:'👟',walking:'🚶',swimming:'🏊',cycling:'🚴',ippt_training:'🪖',gym:'🏋️',strength_training:'💪',calisthenics:'🤸',others:'➕'};
+
+// ─── Singapore Public Holidays 2024-2026 ──────────────────────────────────────
+const SG_HOLIDAYS: Record<string, string> = {
+  // 2025
+  '2025-01-01': "New Year's Day",
+  '2025-01-29': 'Chinese New Year',
+  '2025-01-30': 'Chinese New Year',
+  '2025-03-31': 'Hari Raya Puasa',
+  '2025-04-18': 'Good Friday',
+  '2025-05-01': 'Labour Day',
+  '2025-05-12': 'Vesak Day',
+  '2025-06-07': 'Hari Raya Haji',
+  '2025-08-09': 'National Day',
+  '2025-10-20': 'Deepavali',
+  '2025-12-25': 'Christmas Day',
+  // 2026
+  '2026-01-01': "New Year's Day",
+  '2026-02-17': 'Chinese New Year',
+  '2026-02-18': 'Chinese New Year',
+  '2026-03-20': 'Hari Raya Puasa',
+  '2026-04-03': 'Good Friday',
+  '2026-05-01': 'Labour Day',
+  '2026-05-31': 'Vesak Day',
+  '2026-05-27': 'Hari Raya Haji',
+  '2026-08-09': 'National Day',
+  '2026-11-08': 'Deepavali',
+  '2026-12-25': 'Christmas Day',
+  // 2024 (for history)
+  '2024-01-01': "New Year's Day",
+  '2024-02-10': 'Chinese New Year',
+  '2024-02-11': 'Chinese New Year',
+  '2024-04-10': 'Hari Raya Puasa',
+  '2024-03-29': 'Good Friday',
+  '2024-05-01': 'Labour Day',
+  '2024-05-22': 'Vesak Day',
+  '2024-06-17': 'Hari Raya Haji',
+  '2024-08-09': 'National Day',
+  '2024-10-31': 'Deepavali',
+  '2024-12-25': 'Christmas Day',
+};
+
+const SFT_TYPES = ['Running','Gym','Swimming','Basketball','Badminton','Frisbee','Squash','Strength Training','Others'] as const;
+const ATTENDANCE_STATUSES = ['Participating','Light Duty','MC','On Leave'] as const;
+
+type TeamEvent = {
+  id: string; team_id: string; created_by: string;
+  title: string; description: string;
+  event_date: string; event_type: 'PT'|'SFT'|'Other';
+  is_important: boolean; created_at: string;
+};
+
+type TeamSubmission = {
+  id: string; team_id: string; user_id: string;
+  event_id: string|null; submission_date: string;
+  session_type: 'PT'|'SFT'; attendance_status: string;
+  sft_type: string|null; sft_custom: string|null;
+  temperature: number|null; notes: string; created_at: string;
+};
 
 type Tab = 'activities' | 'members' | 'submissions' | 'schedule';
 type TeamRole = 'admin' | 'pt_ic' | 'spartan' | 'member';
@@ -170,10 +229,9 @@ export default function Teams() {
   const [editSaving, setEditSaving] = useState(false);
 
   // Submission form
-  const [subType, setSubType]       = useState<'SFT' | 'PT'>('PT');
-  const [subTemp, setSubTemp]       = useState('');
-  const [subNotes, setSubNotes]     = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [subType, setSubType] = useState<'SFT'|'PT'>('PT');
+  const [subTemp, setSubTemp] = useState('');
+  const [subNotes, setSubNotes] = useState('');
 
   // Role assignment state
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
@@ -183,6 +241,25 @@ export default function Teams() {
   const [calYear, setCalYear]   = useState(today.getFullYear());
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
+
+  // Events
+  const [events, setEvents]           = useState<TeamEvent[]>([]);
+  const [showAddEvent, setShowAddEvent] = useState(false);
+  const [evtTitle, setEvtTitle]       = useState('');
+  const [evtDesc, setEvtDesc]         = useState('');
+  const [evtDate, setEvtDate]         = useState('');
+  const [evtType, setEvtType]         = useState<'PT'|'SFT'|'Other'>('PT');
+  const [evtImportant, setEvtImportant] = useState(false);
+  const [evtSaving, setEvtSaving]     = useState(false);
+
+  // Submissions
+  const [submissions, setSubmissions]       = useState<TeamSubmission[]>([]);
+  const [subDate, setSubDate]               = useState(today.toISOString().split('T')[0]);
+  const [subEventId, setSubEventId]         = useState<string>('none');
+  const [subAttendance, setSubAttendance]   = useState<string>('Participating');
+  const [sftType, setSftType]               = useState<string>('Running');
+  const [sftCustom, setSftCustom]           = useState('');
+
 
   const handleCreate = async () => {
     if (!createName.trim()) { toast({ title: 'Enter a team name', variant: 'destructive' }); return; }
@@ -227,15 +304,72 @@ export default function Teams() {
     toast({ title: 'Role updated' });
   };
 
+  // ── Events + Submissions ─────────────────────────────────────────────────────
+
+  const fetchEvents = useCallback(async () => {
+    if (!team) return;
+    const { data } = await supabase.from('team_events').select('*')
+      .eq('team_id', team.id).order('event_date', { ascending: true });
+    if (data) setEvents(data as TeamEvent[]);
+  }, [team]);
+
+  const fetchSubmissions = useCallback(async () => {
+    if (!team || !user) return;
+    const { data } = await supabase.from('team_submissions').select('*')
+      .eq('team_id', team.id).eq('user_id', user.id)
+      .order('submission_date', { ascending: false }).limit(20);
+    if (data) setSubmissions(data as TeamSubmission[]);
+  }, [team, user]);
+
+  useEffect(() => { if (team) { fetchEvents(); fetchSubmissions(); } }, [team, fetchEvents, fetchSubmissions]);
+
+  const handleAddEvent = async () => {
+    if (!evtTitle.trim() || !evtDate || !team || !user) {
+      toast({ title: 'Fill in title and date', variant: 'destructive' }); return;
+    }
+    setEvtSaving(true);
+    const { error } = await supabase.from('team_events').insert({
+      team_id: team.id, created_by: user.id,
+      title: evtTitle.trim(), description: evtDesc.trim(),
+      event_date: evtDate, event_type: evtType, is_important: evtImportant,
+    });
+    setEvtSaving(false);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Event added!' });
+    setEvtTitle(''); setEvtDesc(''); setEvtDate(''); setEvtType('PT'); setEvtImportant(false);
+    setShowAddEvent(false);
+    fetchEvents();
+  };
+
+  const handleDeleteEvent = async (id: string) => {
+    await supabase.from('team_events').delete().eq('id', id);
+    fetchEvents();
+  };
+
+  const handleToggleImportant = async (evt: TeamEvent) => {
+    await supabase.from('team_events').update({ is_important: !evt.is_important }).eq('id', evt.id);
+    fetchEvents();
+  };
+
   const handleSubmission = async () => {
-    const tempVal = parseFloat(subTemp);
-    if (!subTemp || isNaN(tempVal)) { toast({ title: 'Enter a valid temperature', variant: 'destructive' }); return; }
-    if (tempVal < 35 || tempVal > 42) { toast({ title: 'Temperature must be between 35°C and 42°C', variant: 'destructive' }); return; }
+    if (!team || !user) return;
     setSubmitting(true);
-    await new Promise(r => setTimeout(r, 600));
+    const { error } = await supabase.from('team_submissions').insert({
+      team_id: team.id, user_id: user.id,
+      event_id: subEventId === 'none' ? null : subEventId,
+      submission_date: subDate,
+      session_type: subType,
+      attendance_status: subAttendance,
+      sft_type: subType === 'SFT' ? sftType : null,
+      sft_custom: subType === 'SFT' && sftType === 'Others' ? sftCustom : null,
+      temperature: subTemp ? parseFloat(subTemp) : null,
+      notes: subNotes,
+    });
     setSubmitting(false);
-    setSubTemp(''); setSubNotes('');
-    toast({ title: `${subType} submission recorded!`, description: `Temp: ${tempVal}°C` });
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Attendance submitted!' });
+    setSubTemp(''); setSubNotes(''); setSftCustom('');
+    fetchSubmissions();
   };
 
   const copyCode = () => {
@@ -628,100 +762,330 @@ export default function Teams() {
       )}
 
       {/* ── Submissions ── */}
-      {tab === 'submissions' && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-primary" /> Clock In
-              </CardTitle>
-              <CardDescription>Record your parade state and temperature</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Session Type</Label>
-                <div className="flex rounded-lg border overflow-hidden">
-                  {(['PT', 'SFT'] as const).map(t => (
-                    <button key={t} onClick={() => setSubType(t)}
-                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${subType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
-                      {t}
-                    </button>
-                  ))}
+      {tab === 'submissions' && (() => {
+        const todayEvents = events.filter(e => e.event_date === subDate);
+        return (
+          <div className="space-y-4">
+            {/* Important pinned events */}
+            {events.filter(e => e.is_important && e.event_date >= today.toISOString().split('T')[0]).slice(0,3).map(e => (
+              <div key={e.id} className="flex items-start gap-2 rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3">
+                <Pin className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">{e.title}</p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-400">{new Date(e.event_date).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})} · {e.event_type}</p>
+                  {e.description && <p className="text-xs text-yellow-600 mt-0.5">{e.description}</p>}
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5">
-                  <Thermometer className="h-4 w-4" /> Temperature (°C)
-                </Label>
-                <Input type="number" step="0.1" min="35" max="42" placeholder="e.g. 36.5" value={subTemp} onChange={e => setSubTemp(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                <Textarea placeholder="Any remarks..." value={subNotes} onChange={e => setSubNotes(e.target.value)} rows={2} />
-              </div>
-              <Button onClick={handleSubmission} disabled={submitting} className="w-full">
-                <Clock className="h-4 w-4 mr-2" />
-                {submitting ? 'Submitting...' : `Submit ${subType} Attendance`}
-              </Button>
-            </CardContent>
-          </Card>
-          <div className="text-center py-8 text-muted-foreground">
-            <Clock className="h-8 w-8 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">Submission history coming soon</p>
-          </div>
-        </div>
-      )}
+            ))}
 
-      {/* ── Schedule ── */}
-      {tab === 'schedule' && (
-        <div className="space-y-4">
-          <Card>
-            <CardContent className="pt-4 px-3 pb-3">
-              <div className="flex items-center justify-between mb-3 px-1">
-                <button onClick={prevMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">‹</button>
-                <span className="text-sm font-semibold">{MONTHS[calMonth]} {calYear}</span>
-                <button onClick={nextMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">›</button>
-              </div>
-              <div className="grid grid-cols-7 mb-1">
-                {DAYS.map(d => (
-                  <div key={d} className="text-center text-xs font-medium text-muted-foreground py-1">{d}</div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-y-1">
-                {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} />)}
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                  const d = i + 1;
-                  const isSelected = selectedDay === d;
-                  const todayMark = isToday(d);
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-primary" /> Submit Attendance
+                </CardTitle>
+                <CardDescription>Record your parade state for PT or SFT</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+
+                {/* Date */}
+                <div className="space-y-2">
+                  <Label>Date</Label>
+                  <Input type="date" value={subDate} onChange={e => setSubDate(e.target.value)} />
+                </div>
+
+                {/* Link to event */}
+                <div className="space-y-2">
+                  <Label>Event <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Select value={subEventId} onValueChange={setSubEventId}>
+                    <SelectTrigger><SelectValue placeholder="Select event..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No specific event</SelectItem>
+                      {events.map(e => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {new Date(e.event_date).toLocaleDateString('en-SG',{day:'numeric',month:'short'})} — {e.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Session type */}
+                <div className="space-y-2">
+                  <Label>Session Type</Label>
+                  <div className="flex rounded-lg border overflow-hidden">
+                    {(['PT','SFT'] as const).map(t => (
+                      <button key={t} onClick={() => setSubType(t)}
+                        className={`flex-1 py-2 text-sm font-semibold transition-colors ${subType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* SFT type — only if SFT */}
+                {subType === 'SFT' && (
+                  <div className="space-y-2">
+                    <Label>Type of SFT</Label>
+                    <Select value={sftType} onValueChange={setSftType}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {SFT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {sftType === 'Others' && (
+                      <Input placeholder="Describe the activity..." value={sftCustom} onChange={e => setSftCustom(e.target.value)} />
+                    )}
+                  </div>
+                )}
+
+                {/* Attendance status */}
+                <div className="space-y-2">
+                  <Label>Attendance Status</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ATTENDANCE_STATUSES.map(s => (
+                      <button key={s} onClick={() => setSubAttendance(s)}
+                        className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors text-left ${subAttendance === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
+                        {s === 'Participating' && '✅ '}
+                        {s === 'Light Duty' && '⚠️ '}
+                        {s === 'MC' && '🏥 '}
+                        {s === 'On Leave' && '🏖️ '}
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Temperature */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Thermometer className="h-4 w-4" /> Temperature (°C) <span className="text-muted-foreground text-xs">(optional)</span>
+                  </Label>
+                  <Input type="number" step="0.1" min="35" max="42" placeholder="e.g. 36.5" value={subTemp} onChange={e => setSubTemp(e.target.value)} />
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-2">
+                  <Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Textarea placeholder="Any remarks..." value={subNotes} onChange={e => setSubNotes(e.target.value)} rows={2} />
+                </div>
+
+                <Button onClick={handleSubmission} disabled={submitting} className="w-full">
+                  <Clock className="h-4 w-4 mr-2" />
+                  {submitting ? 'Submitting...' : `Submit ${subType} Attendance`}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Submission history */}
+            {submissions.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">My Recent Submissions</p>
+                {submissions.map(s => {
+                  const statusEmoji: Record<string,string> = { Participating:'✅', 'Light Duty':'⚠️', MC:'🏥', 'On Leave':'🏖️' };
                   return (
-                    <button key={d} onClick={() => setSelectedDay(isSelected ? null : d)}
-                      className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm transition-colors
-                        ${isSelected ? 'bg-primary text-primary-foreground font-semibold' : ''}
-                        ${todayMark && !isSelected ? 'border border-primary text-primary font-semibold' : ''}
-                        ${!isSelected && !todayMark ? 'hover:bg-muted text-foreground' : ''}`}>
-                      {d}
-                    </button>
+                    <div key={s.id} className="rounded-lg border bg-card p-3 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold">{new Date(s.submission_date).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
+                          <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
+                        </div>
+                        {s.session_type === 'SFT' && s.sft_type && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
+                        )}
+                        {s.notes && <p className="text-xs text-muted-foreground mt-0.5">{s.notes}</p>}
+                      </div>
+                      {s.temperature && <span className="text-xs text-muted-foreground shrink-0">{s.temperature}°C</span>}
+                    </div>
                   );
                 })}
               </div>
-            </CardContent>
-          </Card>
-          {selectedDay && (
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Schedule ── */}
+      {tab === 'schedule' && (() => {
+        const dateKey = (y:number,m:number,d:number) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const eventsOnDay = (d:number) => events.filter(e => e.event_date === dateKey(calYear,calMonth,d));
+        const holidayOnDay = (d:number) => SG_HOLIDAYS[dateKey(calYear,calMonth,d)];
+        const selectedDateKey = selectedDay ? dateKey(calYear,calMonth,selectedDay) : '';
+        const selectedEvents = selectedDay ? eventsOnDay(selectedDay) : [];
+        const selectedHoliday = selectedDay ? holidayOnDay(selectedDay) : null;
+
+        return (
+          <div className="space-y-4">
+            {/* Add event button — admin/pt_ic only */}
+            {canManage && (
+              <div>
+                {!showAddEvent ? (
+                  <Button variant="outline" size="sm" onClick={() => { setShowAddEvent(true); setEvtDate(selectedDateKey || today.toISOString().split('T')[0]); }} className="w-full">
+                    <Plus className="h-4 w-4 mr-2" /> Add Event
+                  </Button>
+                ) : (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">New Event</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Title</Label>
+                        <Input placeholder="e.g. Morning PT" value={evtTitle} onChange={e => setEvtTitle(e.target.value)} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Date</Label>
+                          <Input type="date" value={evtDate} onChange={e => setEvtDate(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Type</Label>
+                          <Select value={evtType} onValueChange={v => setEvtType(v as any)}>
+                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="PT">PT</SelectItem>
+                              <SelectItem value="SFT">SFT</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Description <span className="text-muted-foreground">(optional)</span></Label>
+                        <Textarea placeholder="Details..." value={evtDesc} onChange={e => setEvtDesc(e.target.value)} rows={2} />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox checked={evtImportant} onCheckedChange={v => setEvtImportant(!!v)} />
+                        <span className="text-sm">Mark as Important <span className="text-xs text-muted-foreground">(pins to top of Submissions)</span></span>
+                      </label>
+                      <div className="flex gap-2">
+                        <Button onClick={handleAddEvent} disabled={evtSaving} size="sm" className="flex-1">
+                          {evtSaving ? 'Saving...' : 'Save Event'}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setShowAddEvent(false)}>Cancel</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+
+            {/* Calendar */}
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{selectedDay} {MONTHS[calMonth]} {calYear}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-6 text-muted-foreground">
-                  <Calendar className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No events scheduled</p>
-                  <p className="text-xs mt-1 opacity-70">Team scheduling coming soon</p>
+              <CardContent className="pt-4 px-3 pb-3">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <button onClick={prevMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">‹</button>
+                  <span className="text-sm font-semibold">{MONTHS[calMonth]} {calYear}</span>
+                  <button onClick={nextMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">›</button>
+                </div>
+                <div className="grid grid-cols-7 mb-1">
+                  {DAYS.map(d => <div key={d} className="text-center text-xs font-medium text-muted-foreground py-1">{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-y-1">
+                  {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} />)}
+                  {Array.from({ length: daysInMonth }).map((_, i) => {
+                    const d = i + 1;
+                    const isSelected = selectedDay === d;
+                    const todayMark = isToday(d);
+                    const hasEvents = eventsOnDay(d).length > 0;
+                    const isHoliday = !!holidayOnDay(d);
+                    return (
+                      <button key={d} onClick={() => setSelectedDay(isSelected ? null : d)}
+                        className={`relative mx-auto flex flex-col h-9 w-9 items-center justify-center rounded-full text-sm transition-colors
+                          ${isSelected ? 'bg-primary text-primary-foreground font-semibold' : ''}
+                          ${todayMark && !isSelected ? 'border border-primary text-primary font-semibold' : ''}
+                          ${isHoliday && !isSelected && !todayMark ? 'text-red-500' : ''}
+                          ${!isSelected && !todayMark && !isHoliday ? 'hover:bg-muted text-foreground' : ''}`}>
+                        {d}
+                        {(hasEvents || isHoliday) && !isSelected && (
+                          <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5`}>
+                            {isHoliday && <span className="h-1 w-1 rounded-full bg-red-400" />}
+                            {hasEvents && <span className="h-1 w-1 rounded-full bg-primary" />}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Legend */}
+                <div className="flex items-center gap-4 mt-3 pt-2 border-t justify-center">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" /> Public Holiday</div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-primary inline-block" /> Team Event</div>
                 </div>
               </CardContent>
             </Card>
-          )}
-        </div>
-      )}
+
+            {/* Selected day detail */}
+            {selectedDay && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{selectedDay} {MONTHS[calMonth]} {calYear}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Public holiday */}
+                  {selectedHoliday && (
+                    <div className="flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 px-3 py-2">
+                      <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+                      <span className="text-sm font-medium text-red-700 dark:text-red-300">{selectedHoliday}</span>
+                      <Badge variant="outline" className="ml-auto text-xs border-red-300 text-red-600">Public Holiday</Badge>
+                    </div>
+                  )}
+
+                  {/* Team events */}
+                  {selectedEvents.length === 0 && !selectedHoliday && (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Calendar className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No events scheduled</p>
+                    </div>
+                  )}
+                  {selectedEvents.map(e => (
+                    <div key={e.id} className="rounded-lg border bg-card p-3 space-y-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {e.is_important && <Pin className="h-3.5 w-3.5 text-yellow-500 shrink-0" />}
+                            <span className="text-sm font-semibold">{e.title}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.event_type==='PT'?'bg-blue-100 text-blue-700':e.event_type==='SFT'?'bg-green-100 text-green-700':'bg-muted text-muted-foreground'}`}>
+                              {e.event_type}
+                            </span>
+                          </div>
+                          {e.description && <p className="text-xs text-muted-foreground mt-0.5">{e.description}</p>}
+                        </div>
+                        {canManage && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => handleToggleImportant(e)}
+                              className={`p-1 rounded hover:bg-muted transition-colors ${e.is_important ? 'text-yellow-500' : 'text-muted-foreground'}`}
+                              title={e.is_important ? 'Unpin' : 'Pin as Important'}>
+                              <Star className="h-3.5 w-3.5" />
+                            </button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <button className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-destructive">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete event?</AlertDialogTitle>
+                                  <AlertDialogDescription>This will permanently remove "{e.title}".</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteEvent(e.id)} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
 
     </div>
   );
