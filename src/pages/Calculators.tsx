@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { Calculator, Timer, Apple, Save, Trash2 } from 'lucide-react';
 import {
@@ -90,20 +91,17 @@ export default function Calculators() {
   const [tab, setTab] = useState<Tab>('ippt');
 
   // ── IPPT state ───────────────────────────────────────────────────────────────
-  const [ipptAge, setIpptAge] = useState('');
-  const [pushups, setPushups] = useState('');
-  const [situps, setSitups] = useState('');
-  const [runMin, setRunMin] = useState('');
-  const [runSec, setRunSec] = useState('');
-  const [ipptResult, setIpptResult] = useState<ReturnType<typeof calcIppt>|null>(null);
+  const [ipptAge, setIpptAge] = useState(22);
+  const [pushups, setPushups] = useState(30);
+  const [situps, setSitups]   = useState(30);
+  const [runSecs, setRunSecs] = useState(720); // seconds, 4:00–40:00
   const [ipptSaved, setIpptSaved] = useState<IpptResult[]>([]);
   const [ipptSaving, setIpptSaving] = useState(false);
   const [ipptDeleting, setIpptDeleting] = useState<string|null>(null);
 
   // ── BMI state ────────────────────────────────────────────────────────────────
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
-  const [bmi, setBmi] = useState<number|null>(null);
+  const [height, setHeight] = useState(170);
+  const [weight, setWeight] = useState(70);
   const [bmiSaved, setBmiSaved] = useState<BmiResult[]>([]);
   const [bmiSaving, setBmiSaving] = useState(false);
   const [bmiDeleting, setBmiDeleting] = useState<string|null>(null);
@@ -119,8 +117,8 @@ export default function Calculators() {
 
   // Pre-fill from profile
   useEffect(() => {
-    if (profile?.age) { setIpptAge(String(profile.age)); setCalAge(String(profile.age)); }
-    if (profile?.height_cm) { setHeight(String(profile.height_cm)); setCalHeight(String(profile.height_cm)); }
+    if (profile?.age) { setIpptAge(Math.min(60,Math.max(18,profile.age))); setCalAge(String(profile.age)); }
+    if (profile?.height_cm) { setHeight(Math.min(220,Math.max(100,profile.height_cm))); setCalHeight(String(profile.height_cm)); }
   }, [profile]);
 
   useEffect(() => { if (user) { fetchIpptSaved(); fetchBmiSaved(); } }, [user]);
@@ -135,16 +133,12 @@ export default function Calculators() {
   };
 
   // ── IPPT handlers ─────────────────────────────────────────────────────────────
-  const calculateIppt = () => {
-    const a=parseInt(ipptAge)||0,pu=parseInt(pushups)||0,su=parseInt(situps)||0,rs=(parseInt(runMin)||0)*60+(parseInt(runSec)||0);
-    if(!a||!pu||!su||!rs){toast({title:'Fill in all fields',variant:'destructive'});return;}
-    setIpptResult(calcIppt(pu,su,rs,a));
-  };
+  // Live IPPT result — no calculate button needed
+  const ipptResult = calcIppt(pushups, situps, runSecs, ipptAge);
   const saveIppt = async () => {
-    if(!ipptResult||!user)return;
-    const a=parseInt(ipptAge),pu=parseInt(pushups),su=parseInt(situps),rs=(parseInt(runMin)||0)*60+(parseInt(runSec)||0);
+    if(!user)return;
     setIpptSaving(true);
-    const{error}=await supabase.from('ippt_results').insert({user_id:user.id,age:a,pushups:pu,situps:su,run_seconds:rs,pu_pts:ipptResult.pu,su_pts:ipptResult.su,run_pts:ipptResult.run,total:ipptResult.total,award:ipptResult.award});
+    const{error}=await supabase.from('ippt_results').insert({user_id:user.id,age:ipptAge,pushups,situps,run_seconds:runSecs,pu_pts:ipptResult.pu,su_pts:ipptResult.su,run_pts:ipptResult.run,total:ipptResult.total,award:ipptResult.award});
     setIpptSaving(false);
     if(error){toast({title:'Error saving',description:error.message,variant:'destructive'});}
     else{toast({title:'Result saved!'});fetchIpptSaved();}
@@ -158,16 +152,13 @@ export default function Calculators() {
   };
 
   // ── BMI handlers ──────────────────────────────────────────────────────────────
-  const calculateBmi = () => {
-    const h=parseFloat(height),w=parseFloat(weight);
-    if(!h||!w||h<=0||w<=0){toast({title:'Enter valid height and weight',variant:'destructive'});return;}
-    setBmi(w/((h/100)**2));
-  };
+  // Live BMI
+  const bmi = weight / ((height/100)**2);
   const saveBmi = async () => {
-    if(!bmi||!user)return;
-    const h=parseFloat(height),w=parseFloat(weight),cat=getBmiCat(bmi);
+    if(!user)return;
+    const cat=getBmiCat(bmi);
     setBmiSaving(true);
-    const{error}=await supabase.from('bmi_results').insert({user_id:user.id,height_cm:h,weight_kg:w,bmi:parseFloat(bmi.toFixed(2)),category:cat.label});
+    const{error}=await supabase.from('bmi_results').insert({user_id:user.id,height_cm:height,weight_kg:weight,bmi:parseFloat(bmi.toFixed(2)),category:cat.label});
     setBmiSaving(false);
     if(error){toast({title:'Error saving',description:error.message,variant:'destructive'});}
     else{toast({title:'BMI saved!'});fetchBmiSaved();}
@@ -194,8 +185,9 @@ export default function Calculators() {
   const ipptGraph = ipptSaved.map((r,i)=>({name:new Date(r.created_at).toLocaleDateString('en-SG',{day:'numeric',month:'short'}),attempt:i+1,total:r.total,pushups:r.pu_pts,situps:r.su_pts,run:r.run_pts}));
   const bmiGraph  = bmiSaved.map(r=>({name:new Date(r.created_at).toLocaleDateString('en-SG',{day:'numeric',month:'short'}),bmi:r.bmi,weight:r.weight_kg}));
 
-  const bmiCat = bmi!==null?getBmiCat(bmi):null;
-  const bmiPct = bmi!==null?Math.min(100,Math.max(0,((bmi-10)/30)*100)):null;
+  const bmiCat = getBmiCat(bmi);
+  const bmiPct = Math.min(100,Math.max(0,((bmi-10)/30)*100));
+  const fmtRunTime=(s:number)=>`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
   const ageGroupLabel=(a:number)=>AGE_GROUPS.find(g=>a>=g.min&&a<=g.max)?.label??`Age ${a}`;
 
   const TABS: {id: Tab; label: string; icon: React.ReactNode}[] = [
@@ -240,35 +232,45 @@ export default function Calculators() {
               <CardDescription>Official SAF scoring — results vary by age group</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Age */}
               <div className="space-y-2">
-                <Label>Age</Label>
-                <Input type="number" placeholder="e.g. 22" value={ipptAge} onChange={e=>{setIpptAge(e.target.value);setIpptResult(null);}} className="max-w-[120px]" />
-                {ipptAge && parseInt(ipptAge)>=18 && parseInt(ipptAge)<=60 && (
-                  <p className="text-xs text-muted-foreground">Age group: {ageGroupLabel(parseInt(ipptAge))}</p>
-                )}
+                <div className="flex items-center justify-between">
+                  <Label>Age</Label>
+                  <span className="text-sm font-bold text-primary">{ipptAge} <span className="text-xs font-normal text-muted-foreground">({ageGroupLabel(ipptAge)})</span></span>
+                </div>
+                <Slider min={18} max={60} step={1} value={[ipptAge]} onValueChange={([v])=>setIpptAge(v)} />
+                <div className="flex justify-between text-xs text-muted-foreground"><span>18</span><span>60</span></div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
+              {/* Push-ups */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <Label>Push-ups <span className="text-xs text-muted-foreground">(max 25 pts)</span></Label>
-                  <Input type="number" placeholder="e.g. 40" value={pushups} onChange={e=>{setPushups(e.target.value);setIpptResult(null);}} />
+                  <span className="text-sm font-bold text-primary tabular-nums">{pushups}</span>
                 </div>
-                <div className="space-y-2">
-                  <Label>Sit-ups <span className="text-xs text-muted-foreground">(max 25 pts)</span></Label>
-                  <Input type="number" placeholder="e.g. 40" value={situps} onChange={e=>{setSitups(e.target.value);setIpptResult(null);}} />
-                </div>
+                <Slider min={0} max={100} step={1} value={[pushups]} onValueChange={([v])=>setPushups(v)} />
+                <div className="flex justify-between text-xs text-muted-foreground"><span>0</span><span>100</span></div>
               </div>
+              {/* Sit-ups */}
               <div className="space-y-2">
-                <Label>2.4km Run Time <span className="text-xs text-muted-foreground">(max 50 pts)</span></Label>
-                <div className="flex items-center gap-2">
-                  <Input type="number" placeholder="MM" value={runMin} onChange={e=>{setRunMin(e.target.value);setIpptResult(null);}} className="w-24" />
-                  <span className="text-muted-foreground">:</span>
-                  <Input type="number" placeholder="SS" value={runSec} onChange={e=>{setRunSec(e.target.value);setIpptResult(null);}} className="w-24" />
-                  <span className="text-xs text-muted-foreground">min : sec</span>
+                <div className="flex items-center justify-between">
+                  <Label>Sit-ups <span className="text-xs text-muted-foreground">(max 25 pts)</span></Label>
+                  <span className="text-sm font-bold text-primary tabular-nums">{situps}</span>
                 </div>
+                <Slider min={0} max={100} step={1} value={[situps]} onValueChange={([v])=>setSitups(v)} />
+                <div className="flex justify-between text-xs text-muted-foreground"><span>0</span><span>100</span></div>
               </div>
-              <Button onClick={calculateIppt} className="w-full">Calculate</Button>
+              {/* Run */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>2.4km Run <span className="text-xs text-muted-foreground">(max 50 pts)</span></Label>
+                  <span className="text-sm font-bold text-primary tabular-nums">{fmtRunTime(runSecs)}</span>
+                </div>
+                <Slider min={240} max={2400} step={10} value={[runSecs]} onValueChange={([v])=>setRunSecs(v)} />
+                <div className="flex justify-between text-xs text-muted-foreground"><span>4:00 (fastest)</span><span>40:00 (slowest)</span></div>
+              </div>
 
-              {ipptResult && (() => {
+              {/* Live result — always shown */}
+              {(() => {
                 const style=IPPT_STYLE[ipptResult.award];
                 return (
                   <div className="rounded-xl border p-5 space-y-4">
@@ -283,7 +285,7 @@ export default function Calculators() {
                       {[
                         {label:'Push-ups',pts:ipptResult.pu,max:25,value:pushups},
                         {label:'Sit-ups', pts:ipptResult.su,max:25,value:situps},
-                        {label:'2.4km Run',pts:ipptResult.run,max:50,value:runMin||runSec?`${runMin||'0'}:${String(parseInt(runSec||'0')).padStart(2,'0')}`:'-'},
+                        {label:'2.4km Run',pts:ipptResult.run,max:50,value:fmtRunTime(runSecs)},
                       ].map(s=>(
                         <div key={s.label} className="rounded-lg bg-muted p-3 text-center">
                           <div className="text-xs text-muted-foreground mb-1">{s.label}</div>
@@ -306,7 +308,8 @@ export default function Calculators() {
                     </Button>
                   </div>
                 );
-              })()}
+              })()
+            }
             </CardContent>
           </Card>
 
@@ -384,19 +387,26 @@ export default function Calculators() {
               <CardDescription>Body Mass Index based on height and weight</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Height (cm)</Label>
-                  <Input type="number" placeholder="e.g. 170" value={height} onChange={e=>{setHeight(e.target.value);setBmi(null);}}/>
+              {/* Height */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Height</Label>
+                  <span className="text-sm font-bold text-primary">{height} <span className="text-xs font-normal text-muted-foreground">cm</span></span>
                 </div>
-                <div className="space-y-2">
-                  <Label>Weight (kg)</Label>
-                  <Input type="number" placeholder="e.g. 70" value={weight} onChange={e=>{setWeight(e.target.value);setBmi(null);}}/>
-                </div>
+                <Slider min={100} max={220} step={1} value={[height]} onValueChange={([v])=>setHeight(v)} />
+                <div className="flex justify-between text-xs text-muted-foreground"><span>100</span><span>220</span></div>
               </div>
-              <Button onClick={calculateBmi} className="w-full">Calculate BMI</Button>
+              {/* Weight */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Weight</Label>
+                  <span className="text-sm font-bold text-primary">{weight} <span className="text-xs font-normal text-muted-foreground">kg</span></span>
+                </div>
+                <Slider min={30} max={200} step={1} value={[weight]} onValueChange={([v])=>setWeight(v)} />
+                <div className="flex justify-between text-xs text-muted-foreground"><span>30</span><span>200</span></div>
+              </div>
 
-              {bmi!==null&&bmiCat&&bmiPct!==null&&(
+              {(
                 <div className="rounded-xl border p-5 space-y-5">
                   <div className="flex items-center justify-between">
                     <div>
@@ -425,9 +435,7 @@ export default function Calculators() {
                       </div>
                     ))}
                   </div>
-                  {height&&parseFloat(height)>0&&(()=>{const h=parseFloat(height)/100;return(
-                    <p className="text-xs text-muted-foreground text-center">Healthy weight for {height}cm: <span className="font-medium text-foreground">{(18.5*h*h).toFixed(1)} – {(24.9*h*h).toFixed(1)} kg</span></p>
-                  );})()}
+                  {(()=>{const h=height/100;return(<p className="text-xs text-muted-foreground text-center">Healthy weight for {height}cm: <span className="font-medium text-foreground">{(18.5*h*h).toFixed(1)} – {(24.9*h*h).toFixed(1)} kg</span></p>);})()}
                   <Button onClick={saveBmi} disabled={bmiSaving} variant="outline" className="w-full">
                     <Save className="h-4 w-4 mr-2"/>{bmiSaving?'Saving...':'Save Result'}
                   </Button>
