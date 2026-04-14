@@ -18,6 +18,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
   Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords,
@@ -149,9 +150,11 @@ export default function Teams() {
   const { toast } = useToast();
   const { team, members, feed, myRole, myTeamRole, loading, createTeam, joinTeam, deleteTeam, removeMember, updateTeam, updateMemberRole, refreshFeed } = useTeam();
 
+  const hasRole = (roles: string[], role: string) => Array.isArray(roles) && roles.includes(role);
+
   const isAdmin       = (profile as any)?.is_admin === true;
-  const canManage     = myTeamRole === 'admin' || myTeamRole === 'pt_ic';
-  const canAssignPTIC = myTeamRole === 'admin';
+  const canManage     = hasRole(myTeamRole, 'admin') || hasRole(myTeamRole, 'pt_ic');
+  const canAssignPTIC = hasRole(myTeamRole, 'admin');
 
   const [tab, setTab]               = useState<Tab>('activities');
   const [createName, setCreateName] = useState('');
@@ -208,11 +211,20 @@ export default function Teams() {
     toast({ title: 'Team settings saved!' });
   };
 
-  const handleRoleChange = async (userId: string, newRole: TeamRole) => {
+  const handleRoleToggle = async (userId: string, currentRoles: string[], toggleRole: string) => {
     setRoleUpdating(userId);
-    await updateMemberRole(userId, newRole);
+    let newRoles: string[];
+    if (currentRoles.includes(toggleRole)) {
+      // Remove role; ensure at least 'member' remains
+      newRoles = currentRoles.filter(r => r !== toggleRole);
+      if (newRoles.length === 0) newRoles = ['member'];
+    } else {
+      // Add role; remove 'member' placeholder if adding a real role
+      newRoles = [...currentRoles.filter(r => r !== 'member'), toggleRole];
+    }
+    await updateMemberRole(userId, newRoles);
     setRoleUpdating(null);
-    toast({ title: `Role updated to ${ROLE_LABEL[newRole]}` });
+    toast({ title: 'Role updated' });
   };
 
   const handleSubmission = async () => {
@@ -409,13 +421,15 @@ export default function Teams() {
           </div>
         )}
 
-        {/* My role badge */}
-        {myTeamRole && myTeamRole !== 'member' && (
-          <div className="mt-2">
-            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${ROLE_BADGE[myTeamRole]}`}>
-              <RoleIcon role={myTeamRole} />
-              {ROLE_LABEL[myTeamRole]}
-            </span>
+        {/* My role badges — show all non-member roles */}
+        {myTeamRole.some(r => r !== 'member') && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {myTeamRole.filter(r => r !== 'member').map(r => (
+              <span key={r} className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${ROLE_BADGE[r as TeamRole]}`}>
+                <RoleIcon role={r as TeamRole} />
+                {ROLE_LABEL[r as TeamRole]}
+              </span>
+            ))}
           </div>
         )}
       </div>
@@ -506,19 +520,20 @@ export default function Teams() {
           {members.map(m => {
             const p = m.profile;
             const isMe = m.user_id === user!.id;
-            const memberTeamRole = (m.team_role ?? 'member') as TeamRole;
+            const memberTeamRole: string[] = Array.isArray(m.team_role) && m.team_role.length ? m.team_role : ['member'];
+            const primaryRole = (['admin','pt_ic','spartan'].find(r => memberTeamRole.includes(r)) ?? 'member') as TeamRole;
             const ippt = p?.ippt_pushups && p?.ippt_situps && p?.ippt_run_seconds && p?.age
               ? calcIpptAward(p.ippt_pushups, p.ippt_situps, p.ippt_run_seconds, p.age) : null;
 
             // What roles can the current user assign to this member?
-            const assignableRoles: TeamRole[] = (() => {
+            const assignableRoles: string[] = (() => {
               if (isMe) return [];
-              if (canAssignPTIC) return ['admin', 'pt_ic', 'spartan', 'member']; // admin can assign all
-              if (myTeamRole === 'pt_ic') return ['spartan', 'member'];           // PT IC can only assign spartan/member
+              if (canAssignPTIC) return ['admin', 'pt_ic', 'spartan']; // admin can toggle admin/pt_ic/spartan
+              if (hasRole(myTeamRole, 'pt_ic')) return ['spartan'];     // PT IC can only toggle spartan
               return [];
             })();
 
-            const canKick = canManage && !isMe && memberTeamRole !== 'admin';
+            const canKick = canManage && !isMe && !memberTeamRole.includes('admin');
 
             return (
               <div key={m.id || m.user_id} className="rounded-xl border bg-card p-4 space-y-3">
@@ -532,10 +547,15 @@ export default function Teams() {
                       <span className="text-sm font-semibold">
                         {p?.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p?.full_name ?? 'Member'}
                       </span>
-                      <RoleIcon role={memberTeamRole} />
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${ROLE_BADGE[memberTeamRole]}`}>
-                        {ROLE_LABEL[memberTeamRole]}
-                      </span>
+                      <RoleIcon role={primaryRole} />
+                      {memberTeamRole.filter(r => r !== 'member').map(r => (
+                        <span key={r} className={`text-xs px-2 py-0.5 rounded-full border ${ROLE_BADGE[r as TeamRole]}`}>
+                          {ROLE_LABEL[r as TeamRole]}
+                        </span>
+                      ))}
+                      {memberTeamRole.every(r => r === 'member') && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${ROLE_BADGE['member']}`}>Member</span>
+                      )}
                       {isMe && <Badge variant="outline" className="text-xs">You</Badge>}
                       {ippt && (
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
@@ -579,26 +599,23 @@ export default function Teams() {
                   )}
                 </div>
 
-                {/* Role assignment — only shown if current user can assign roles to this member */}
+                {/* Role assignment — checkboxes so roles can be stacked */}
                 {assignableRoles.length > 0 && (
-                  <div className="flex items-center gap-2 pt-1 border-t">
-                    <span className="text-xs text-muted-foreground shrink-0">Assign role:</span>
-                    <Select
-                      value={memberTeamRole}
-                      onValueChange={val => handleRoleChange(m.user_id, val as TeamRole)}
-                      disabled={roleUpdating === m.user_id}
-                    >
-                      <SelectTrigger className="h-7 text-xs flex-1 max-w-[160px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {assignableRoles.map(r => (
-                          <SelectItem key={r} value={r} className="text-xs">
-                            {ROLE_LABEL[r]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="pt-2 border-t space-y-1">
+                    <span className="text-xs text-muted-foreground">Assign roles:</span>
+                    <div className="flex flex-wrap gap-3 pt-1">
+                      {assignableRoles.map(r => (
+                        <label key={r} className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <Checkbox
+                            checked={memberTeamRole.includes(r)}
+                            onCheckedChange={() => handleRoleToggle(m.user_id, memberTeamRole, r)}
+                            disabled={roleUpdating === m.user_id}
+                            className="h-4 w-4"
+                          />
+                          <span className="text-xs font-medium">{ROLE_LABEL[r as TeamRole]}</span>
+                        </label>
+                      ))}
+                    </div>
                     {roleUpdating === m.user_id && (
                       <span className="text-xs text-muted-foreground">Saving...</span>
                     )}
