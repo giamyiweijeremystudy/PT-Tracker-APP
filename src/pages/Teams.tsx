@@ -251,6 +251,7 @@ export default function Teams() {
   const [evtType, setEvtType]         = useState<'PT'|'SFT'|'Other'>('PT');
   const [evtImportant, setEvtImportant] = useState(false);
   const [evtSaving, setEvtSaving]     = useState(false);
+  const [submitting, setSubmitting]     = useState(false);
 
   // Submissions
   const [submissions, setSubmissions]       = useState<TeamSubmission[]>([]);
@@ -579,14 +580,38 @@ export default function Teams() {
       </div>
 
       {/* ── Activities ── */}
-      {tab === 'activities' && (
-        feed.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm font-medium">No activities yet</p>
-            <p className="text-xs mt-1 opacity-70">Team members' activities will appear here</p>
-          </div>
-        ) : (
+      {tab === 'activities' && (() => {
+        const todayStr = today.toISOString().split('T')[0];
+        const pinnedEvents = events.filter(e => e.is_important && e.event_date >= todayStr)
+          .sort((a, b) => a.event_date.localeCompare(b.event_date));
+        return (
+        <div className="space-y-4">
+          {/* Pinned important events */}
+          {pinnedEvents.map(e => (
+            <div key={e.id} className="flex items-start gap-3 rounded-xl border-2 border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 shadow-sm">
+              <Pin className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-yellow-800 dark:text-yellow-200">{e.title}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${e.event_type==='PT'?'bg-blue-100 text-blue-700':e.event_type==='SFT'?'bg-green-100 text-green-700':'bg-muted text-muted-foreground'}`}>
+                    {e.event_type}
+                  </span>
+                </div>
+                <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+                  {new Date(e.event_date).toLocaleDateString('en-SG',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}
+                </p>
+                {e.description && <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-0.5">{e.description}</p>}
+              </div>
+            </div>
+          ))}
+
+          {feed.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">No activities yet</p>
+              <p className="text-xs mt-1 opacity-70">Team members' activities will appear here</p>
+            </div>
+          ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">{feed.length} recent activities</p>
@@ -627,8 +652,10 @@ export default function Teams() {
               );
             })}
           </div>
-        )
-      )}
+          )}
+        </div>
+        );
+      })()}
 
       {/* ── Members ── */}
       {tab === 'members' && (
