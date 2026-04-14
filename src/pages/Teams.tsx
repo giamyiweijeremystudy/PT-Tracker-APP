@@ -482,7 +482,7 @@ export default function Teams() {
                   </div>
                   {a.title && <p className="px-4 pb-1 text-sm font-semibold">{a.title}</p>}
                   {a.description && <p className="px-4 pb-2 text-sm leading-relaxed text-muted-foreground">{a.description}</p>}
-                  {a.image_url && <img src={a.image_url} alt="activity" className="w-full max-h-72 object-cover" />}
+                  {a.image_url && <img src={a.image_url} alt="activity" className="w-full h-auto max-h-[75vw] sm:max-h-96 object-contain bg-muted" />}
                   {(a.duration_minutes || a.distance_km) && (
                     <div className="flex gap-6 px-4 py-3 border-t bg-muted/30">
                       {a.duration_minutes && <div><p className="text-xs text-muted-foreground">Duration</p><p className="text-sm font-semibold">{a.duration_minutes} min</p></div>}
