@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useTeam } from '@/contexts/TeamContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -321,6 +322,7 @@ function ActivityForm({
 
 export default function Activities() {
   const { user, profile } = useAuth();
+  const { team, refreshFeed } = useTeam();
   const { toast } = useToast();
 
   const [activities, setActivities]       = useState<SavedActivity[]>([]);
@@ -429,9 +431,24 @@ export default function Activities() {
   const save = async () => {
     setSaving(true);
     const imageUrl = imageFile ? await uploadImage(imageFile) : null;
-    const { error } = await supabase.from('activities').insert(buildPayload(form, imageUrl));
+    const { data: newActivity, error } = await supabase
+      .from('activities')
+      .insert(buildPayload(form, imageUrl))
+      .select('id')
+      .single();
     setSaving(false);
-    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    if (error || !newActivity) { toast({ title: 'Error', description: error?.message, variant: 'destructive' }); return; }
+
+    // Mirror to team feed if user belongs to a team
+    if (team && user) {
+      await supabase.from('team_activities').insert({
+        activity_id: newActivity.id,
+        team_id: team.id,
+        user_id: user.id,
+      });
+      await refreshFeed();
+    }
+
     toast({ title: 'Activity posted!' });
     setForm(defaultForm()); setImageFile(null); setImagePreview(null); setShowForm(false);
     fetchActivities();
