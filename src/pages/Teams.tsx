@@ -23,7 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
   Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords, Star, Pin, AlertCircle,
-  BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon,
+  BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon, Download, FileText, Users2,
 } from 'lucide-react';
 
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
@@ -340,6 +340,8 @@ export default function Teams() {
   const [selectedVotes, setSelectedVotes] = useState<Record<string, string[]>>({});
   const [answerDrafts, setAnswerDrafts]   = useState<Record<string, string>>({});
   const [submittingPost, setSubmittingPost] = useState<string | null>(null);
+  const [expandedPost, setExpandedPost]       = useState<string | null>(null);
+  const [allSubmissions, setAllSubmissions]   = useState<(TeamSubmission & { profile?: { full_name: string; rank: string } })[]>([]);
 
   // ── Events + Submissions ─────────────────────────────────────────────────────
 
@@ -367,16 +369,16 @@ export default function Teams() {
     if (!team) return;
     const todayStr = new Date().toISOString().split('T')[0];
     const { data: postsData } = await supabase
-      .from('team_posts').select('*').eq('team_id', team.id)
+      .from('team_bulletins').select('*').eq('team_id', team.id)
       .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false });
     if (!postsData) return;
 
     const postIds = postsData.map((p: any) => p.id);
     const [optRes, voteRes, ansRes] = await Promise.all([
-      supabase.from('team_poll_options').select('*').in('post_id', postIds).order('position'),
-      supabase.from('team_poll_votes').select('*').in('post_id', postIds),
-      supabase.from('team_question_answers').select('*').in('post_id', postIds),
+      supabase.from('team_bulletin_options').select('*').in('post_id', postIds).order('position'),
+      supabase.from('team_bulletin_votes').select('*').in('post_id', postIds),
+      supabase.from('team_bulletin_answers').select('*').in('post_id', postIds),
     ]);
 
     const options  = (optRes.data  ?? []) as PollOption[];
@@ -413,7 +415,7 @@ export default function Teams() {
       toast({ title: 'Add at least 2 options', variant: 'destructive' }); return;
     }
     setPostSaving(true);
-    const { data: newPost, error } = await supabase.from('team_posts').insert({
+    const { data: newPost, error } = await supabase.from('team_bulletins').insert({
       team_id: team.id, created_by: user.id,
       post_type: postType, title: postTitle.trim(), body: postBody.trim(),
       is_pinned: postPinned, pin_until: postPinned && postType === 'notice' ? postPinUntil || null : null,
@@ -423,7 +425,7 @@ export default function Teams() {
 
     if (postType === 'poll') {
       const opts = pollOptions.filter(o => o.trim()).map((label, i) => ({ post_id: newPost.id, label: label.trim(), position: i }));
-      await supabase.from('team_poll_options').insert(opts);
+      await supabase.from('team_bulletin_options').insert(opts);
     }
     setPostSaving(false);
     toast({ title: `${postType === 'poll' ? 'Poll' : postType === 'notice' ? 'Notice' : 'Question'} posted!` });
@@ -439,20 +441,20 @@ export default function Teams() {
 
     if (alreadyVoted) {
       // Remove vote
-      await supabase.from('team_poll_votes').delete()
+      await supabase.from('team_bulletin_votes').delete()
         .eq('post_id', post.id).eq('option_id', optionId).eq('user_id', user.id);
       setSelectedVotes(prev => ({ ...prev, [post.id]: myVotes.filter(v => v !== optionId) }));
     } else {
       if (!post.allow_multi) {
         // Single select — remove previous vote first
         if (myVotes.length > 0) {
-          await supabase.from('team_poll_votes').delete()
+          await supabase.from('team_bulletin_votes').delete()
             .eq('post_id', post.id).eq('user_id', user.id);
         }
-        await supabase.from('team_poll_votes').insert({ post_id: post.id, option_id: optionId, user_id: user.id });
+        await supabase.from('team_bulletin_votes').insert({ post_id: post.id, option_id: optionId, user_id: user.id });
         setSelectedVotes(prev => ({ ...prev, [post.id]: [optionId] }));
       } else {
-        await supabase.from('team_poll_votes').insert({ post_id: post.id, option_id: optionId, user_id: user.id });
+        await supabase.from('team_bulletin_votes').insert({ post_id: post.id, option_id: optionId, user_id: user.id });
         setSelectedVotes(prev => ({ ...prev, [post.id]: [...myVotes, optionId] }));
       }
     }
@@ -466,9 +468,9 @@ export default function Teams() {
     setSubmittingPost(post.id);
     const existing = post.answers?.find(a => a.user_id === user.id);
     if (existing) {
-      await supabase.from('team_question_answers').update({ answer }).eq('id', existing.id);
+      await supabase.from('team_bulletin_answers').update({ answer }).eq('id', existing.id);
     } else {
-      await supabase.from('team_question_answers').insert({ post_id: post.id, user_id: user.id, answer });
+      await supabase.from('team_bulletin_answers').insert({ post_id: post.id, user_id: user.id, answer });
     }
     setSubmittingPost(null);
     setAnswerDrafts(prev => ({ ...prev, [post.id]: '' }));
@@ -477,11 +479,120 @@ export default function Teams() {
   };
 
   const handleDeletePost = async (id: string) => {
-    await supabase.from('team_posts').delete().eq('id', id);
+    await supabase.from('team_bulletins').delete().eq('id', id);
     fetchPosts();
   };
 
-  const handleAddEvent = async () => {
+  // ── All submissions (admin view) ─────────────────────────────────────────────
+
+  const fetchAllSubmissions = useCallback(async () => {
+    if (!team || !canManage) return;
+    const { data: subs } = await supabase
+      .from('team_submissions').select('*')
+      .eq('team_id', team.id)
+      .order('submission_date', { ascending: false });
+    if (!subs) return;
+
+    const userIds = [...new Set(subs.map((s: any) => s.user_id))];
+    const { data: profiles } = userIds.length > 0
+      ? await supabase.from('profiles').select('id, full_name, rank').in('id', userIds)
+      : { data: [] };
+    const profileMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
+    setAllSubmissions(subs.map((s: any) => ({ ...s, profile: profileMap[s.user_id] })));
+  }, [team, canManage]);
+
+  useEffect(() => { if (team && canManage) fetchAllSubmissions(); }, [team, canManage, fetchAllSubmissions]);
+
+  // ── Download helpers ──────────────────────────────────────────────────────────
+
+  const downloadTxt = (filename: string, lines: string[]) => {
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCsv = (filename: string, rows: string[][]) => {
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPollResults = (p: TeamPost, fmt: 'txt' | 'csv') => {
+    const title = p.title;
+    const totalVotes = p.votes?.length ?? 0;
+    if (fmt === 'txt') {
+      const lines = [`Poll: ${title}`, `Total votes: ${totalVotes}`, `Type: ${p.allow_multi ? 'Multi-select' : 'Single-select'}`, ''];
+      p.options?.forEach(opt => {
+        const voters = (p.votes ?? []).filter(v => v.option_id === opt.id);
+        const pct = totalVotes > 0 ? Math.round((voters.length / totalVotes) * 100) : 0;
+        lines.push(`${opt.label}: ${voters.length} votes (${pct}%)`);
+        voters.forEach(v => {
+          const m = members.find(mb => mb.user_id === v.user_id);
+          lines.push(`  - ${m?.profile?.full_name ?? v.user_id}`);
+        });
+      });
+      downloadTxt(`poll_${title.replace(/\s+/g,'_')}.txt`, lines);
+    } else {
+      const rows: string[][] = [['Option', 'Votes', 'Percentage', 'Voters']];
+      p.options?.forEach(opt => {
+        const voters = (p.votes ?? []).filter(v => v.option_id === opt.id);
+        const pct = totalVotes > 0 ? Math.round((voters.length / totalVotes) * 100) : 0;
+        const voterNames = voters.map(v => members.find(mb => mb.user_id === v.user_id)?.profile?.full_name ?? v.user_id).join('; ');
+        rows.push([opt.label, String(voters.length), `${pct}%`, voterNames]);
+      });
+      downloadCsv(`poll_${title.replace(/\s+/g,'_')}.csv`, rows);
+    }
+  };
+
+  const downloadQuestionResults = (p: TeamPost, fmt: 'txt' | 'csv') => {
+    const title = p.title;
+    if (fmt === 'txt') {
+      const lines = [`Question: ${title}`, `Answers: ${p.answers?.length ?? 0}`, ''];
+      p.answers?.forEach(a => {
+        const m = members.find(mb => mb.user_id === a.user_id);
+        lines.push(`${m?.profile?.full_name ?? 'Member'}: ${a.answer}`);
+      });
+      downloadTxt(`question_${title.replace(/\s+/g,'_')}.txt`, lines);
+    } else {
+      const rows: string[][] = [['Name', 'Rank', 'Answer', 'Submitted']];
+      p.answers?.forEach(a => {
+        const m = members.find(mb => mb.user_id === a.user_id);
+        rows.push([m?.profile?.full_name ?? 'Member', m?.profile?.rank ?? '', a.answer, new Date(a.created_at).toLocaleDateString('en-SG')]);
+      });
+      downloadCsv(`question_${title.replace(/\s+/g,'_')}.csv`, rows);
+    }
+  };
+
+  const downloadSubmissions = (fmt: 'txt' | 'csv') => {
+    if (fmt === 'txt') {
+      const lines = [`Team Submissions — ${team?.name}`, `Downloaded: ${new Date().toLocaleDateString('en-SG')}`, ''];
+      allSubmissions.forEach(s => {
+        const name = s.profile ? `${s.profile.rank ? s.profile.rank + ' ' : ''}${s.profile.full_name}` : s.user_id;
+        lines.push(`${s.submission_date} | ${name} | ${s.session_type}${s.session_type==='SFT'&&s.sft_type?` (${s.sft_type}${s.sft_custom?'/'+s.sft_custom:''})`:''} | ${s.attendance_status}${s.temperature?` | ${s.temperature}°C`:''}${s.notes?` | ${s.notes}`:''}`);
+      });
+      downloadTxt(`submissions_${team?.name?.replace(/\s+/g,'_')}.txt`, lines);
+    } else {
+      const rows: string[][] = [['Date','Name','Rank','Session','Attendance','SFT Type','Temperature','Notes']];
+      allSubmissions.forEach(s => {
+        rows.push([
+          s.submission_date,
+          s.profile?.full_name ?? s.user_id,
+          s.profile?.rank ?? '',
+          s.session_type,
+          s.attendance_status,
+          s.session_type==='SFT' ? `${s.sft_type ?? ''}${s.sft_custom ? '/'+s.sft_custom : ''}` : '',
+          s.temperature ? String(s.temperature) : '',
+          s.notes ?? '',
+        ]);
+      });
+      downloadCsv(`submissions_${team?.name?.replace(/\s+/g,'_')}.csv`, rows);
+    }
+  };
+
+    const handleAddEvent = async () => {
     if (!evtTitle.trim() || !evtDate || !team || !user) {
       toast({ title: 'Fill in title and date', variant: 'destructive' }); return;
     }
@@ -815,6 +926,51 @@ export default function Teams() {
                       </button>
                     );
                   })}
+
+                  {/* Voter breakdown dropdown — all members */}
+                  {totalVotes > 0 && (
+                    <div className="border-t pt-2">
+                      <button
+                        onClick={() => setExpandedPost(expandedPost === p.id + '_p' ? null : p.id + '_p')}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full">
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedPost === p.id + '_p' ? 'rotate-180' : ''}`} />
+                        <span>See who voted ({totalVotes})</span>
+                      </button>
+                      {expandedPost === p.id + '_p' && (
+                        <div className="mt-2 space-y-2">
+                          {p.options?.map(opt => {
+                            const voters = (p.votes ?? []).filter(v => v.option_id === opt.id);
+                            if (voters.length === 0) return null;
+                            return (
+                              <div key={opt.id}>
+                                <p className="text-xs font-semibold text-muted-foreground mb-1">{opt.label}</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {voters.map(v => {
+                                    const m = members.find(mb => mb.user_id === v.user_id);
+                                    return (
+                                      <span key={v.id} className="text-xs bg-muted rounded-full px-2 py-0.5">
+                                        {m?.profile?.rank && m.profile.rank !== 'Other' ? m.profile.rank + ' ' : ''}{m?.profile?.full_name ?? 'Member'}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {canManage && (
+                            <div className="flex gap-2 pt-1">
+                              <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadPollResults(p, 'txt')}>
+                                <FileText className="h-3 w-3 mr-1" /> .txt
+                              </Button>
+                              <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadPollResults(p, 'csv')}>
+                                <Download className="h-3 w-3 mr-1" /> .csv
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -847,23 +1003,41 @@ export default function Teams() {
                       </Button>
                     </div>
                   )}
-                  {canManage && (p.answers?.length ?? 0) > 0 && (
-                    <details className="mt-1">
-                      <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                        {p.answers?.length} answer{(p.answers?.length ?? 0) !== 1 ? 's' : ''} submitted
-                      </summary>
-                      <div className="mt-2 space-y-1.5">
-                        {p.answers?.map(a => {
-                          const member = members.find(m => m.user_id === a.user_id);
-                          return (
-                            <div key={a.id} className="rounded bg-muted px-3 py-2 text-sm">
-                              <span className="font-medium text-xs">{member?.profile?.full_name ?? 'Member'}: </span>
-                              {a.answer}
+                  {/* Results dropdown — all members */}
+                  {(p.answers?.length ?? 0) > 0 && (
+                    <div className="mt-1 border-t pt-2">
+                      <button
+                        onClick={() => setExpandedPost(expandedPost === p.id + '_q' ? null : p.id + '_q')}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full">
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandedPost === p.id + '_q' ? 'rotate-180' : ''}`} />
+                        <span>{p.answers?.length} answer{(p.answers?.length ?? 0) !== 1 ? 's' : ''} submitted</span>
+                      </button>
+                      {expandedPost === p.id + '_q' && (
+                        <div className="mt-2 space-y-1.5">
+                          {p.answers?.map(a => {
+                            const member = members.find(m => m.user_id === a.user_id);
+                            return (
+                              <div key={a.id} className="rounded-lg bg-muted px-3 py-2 text-sm">
+                                <p className="text-xs font-semibold text-muted-foreground mb-0.5">
+                                  {member?.profile?.rank && member.profile.rank !== 'Other' ? member.profile.rank + ' ' : ''}{member?.profile?.full_name ?? 'Member'}
+                                </p>
+                                <p>{a.answer}</p>
+                              </div>
+                            );
+                          })}
+                          {canManage && (
+                            <div className="flex gap-2 pt-1">
+                              <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadQuestionResults(p, 'txt')}>
+                                <FileText className="h-3 w-3 mr-1" /> .txt
+                              </Button>
+                              <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadQuestionResults(p, 'csv')}>
+                                <Download className="h-3 w-3 mr-1" /> .csv
+                              </Button>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </details>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -1230,7 +1404,57 @@ export default function Teams() {
                 })}
               </div>
             )}
-          </div>
+
+          {/* ── Admin: All submissions ── */}
+          {canManage && (
+            <div className="space-y-3 pt-2 border-t mt-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Users2 className="h-3.5 w-3.5" /> All Team Submissions ({allSubmissions.length})
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('txt')}>
+                    <FileText className="h-3 w-3 mr-1" /> .txt
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv')}>
+                    <Download className="h-3 w-3 mr-1" /> .csv
+                  </Button>
+                </div>
+              </div>
+              {allSubmissions.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">No submissions yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {allSubmissions.map(s => {
+                    const statusEmoji: Record<string,string> = { Participating:'✅', 'Light Duty':'⚠️', MC:'🏥', 'On Leave':'🏖️' };
+                    const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank + ' ' : ''}${s.profile.full_name}` : 'Member';
+                    return (
+                      <div key={s.id} className="rounded-lg border bg-card p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-semibold">{name}</span>
+                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
+                              <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
+                            </div>
+                            {s.session_type === 'SFT' && s.sft_type && (
+                              <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
+                            )}
+                            {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs text-muted-foreground">{new Date(s.submission_date).toLocaleDateString('en-SG',{day:'numeric',month:'short'})}</p>
+                            {s.temperature && <p className="text-xs text-muted-foreground">{s.temperature}°C</p>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         );
       })()}
 
