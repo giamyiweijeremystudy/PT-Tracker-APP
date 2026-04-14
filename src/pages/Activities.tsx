@@ -282,7 +282,7 @@ function ActivityForm({
         <Label>Photo</Label>
         {imgPreview ? (
           <div className="relative w-full rounded-xl overflow-hidden">
-            <img src={imgPreview} alt="preview" className="w-full max-h-64 object-cover" />
+            <img src={imgPreview} alt="preview" className="w-full h-auto max-h-[60vw] sm:max-h-80 object-contain bg-muted" />
             <button
               type="button"
               onClick={() => setImgPreview(null)}
@@ -655,7 +655,7 @@ export default function Activities() {
 
                 {a.image_url && (
                   <div className="w-full">
-                    <img src={a.image_url} alt="activity" className="w-full max-h-80 object-cover" />
+                    <img src={a.image_url} alt="activity" className="w-full h-auto max-h-[75vw] sm:max-h-96 object-contain bg-muted" />
                   </div>
                 )}
 
