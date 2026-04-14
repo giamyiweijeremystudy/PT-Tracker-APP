@@ -23,7 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
   Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords, Star, Pin, AlertCircle,
-  BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon, Download, FileText, Users2,
+  BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon, Download, FileText, Users2, Trophy, Medal,
 } from 'lucide-react';
 
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
@@ -103,7 +103,8 @@ type TeamSubmission = {
   temperature: number|null; notes: string; created_at: string;
 };
 
-type Tab = 'activities' | 'members' | 'submissions' | 'schedule';
+type Tab = 'activities' | 'members' | 'submissions' | 'schedule' | 'leaderboard';
+type LeaderboardMetric = 'ippt_total' | 'pushups' | 'situps' | 'run' | 'activities';
 type TeamRole = 'admin' | 'pt_ic' | 'spartan' | 'member';
 
 // ── Team posts (polls, notices, questions) ────────────────────────────────────
@@ -341,6 +342,8 @@ export default function Teams() {
   const [answerDrafts, setAnswerDrafts]   = useState<Record<string, string>>({});
   const [submittingPost, setSubmittingPost] = useState<string | null>(null);
   const [expandedPost, setExpandedPost]       = useState<string | null>(null);
+  const [lbMetric, setLbMetric]               = useState<LeaderboardMetric>('ippt_total');
+  const [activityCounts, setActivityCounts]   = useState<Record<string, number>>({});
   const [allSubmissions, setAllSubmissions]   = useState<(TeamSubmission & { profile?: { full_name: string; rank: string } })[]>([]);
 
   // ── Events + Submissions ─────────────────────────────────────────────────────
@@ -349,7 +352,14 @@ export default function Teams() {
     if (!team) return;
     const { data } = await supabase.from('team_events').select('*')
       .eq('team_id', team.id).order('event_date', { ascending: true });
-    if (data) setEvents(data as TeamEvent[]);
+    if (data) {
+      const evts = data as TeamEvent[];
+      setEvents(evts);
+      // Auto-select today's event in submissions
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayEvt = evts.find(e => e.event_date === todayStr);
+      if (todayEvt) setSubEventId(todayEvt.id);
+    }
   }, [team]);
 
   const fetchSubmissions = useCallback(async () => {
@@ -502,6 +512,23 @@ export default function Teams() {
   }, [team, canManage]);
 
   useEffect(() => { if (team && canManage) fetchAllSubmissions(); }, [team, canManage, fetchAllSubmissions]);
+  useEffect(() => { if (team && canManage) fetchAllSubmissions(); }, [team, canManage, fetchAllSubmissions]);
+
+  const fetchActivityCounts = useCallback(async () => {
+    if (!team || members.length === 0) return;
+    const memberIds = members.map(m => m.user_id);
+    const { data } = await supabase
+      .from('team_activities')
+      .select('user_id')
+      .eq('team_id', team.id);
+    if (!data) return;
+    const counts: Record<string, number> = {};
+    memberIds.forEach(id => { counts[id] = 0; });
+    data.forEach((row: any) => { if (counts[row.user_id] !== undefined) counts[row.user_id]++; });
+    setActivityCounts(counts);
+  }, [team, members]);
+
+  useEffect(() => { if (team && members.length > 0) fetchActivityCounts(); }, [team, members, fetchActivityCounts]);
 
   // ── Download helpers ──────────────────────────────────────────────────────────
 
@@ -735,10 +762,11 @@ export default function Teams() {
   const isToday = (d: number) => d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'activities',  label: 'Activities',  icon: <Activity className="h-3.5 w-3.5 mr-1" /> },
-    { id: 'members',     label: 'Members',     icon: <Users className="h-3.5 w-3.5 mr-1" /> },
-    { id: 'submissions', label: 'Submissions', icon: <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> },
-    { id: 'schedule',    label: 'Schedule',    icon: <Calendar className="h-3.5 w-3.5 mr-1" /> },
+    { id: 'activities',   label: 'Activities',  icon: <Activity className="h-3.5 w-3.5 mr-1" /> },
+    { id: 'members',      label: 'Members',     icon: <Users className="h-3.5 w-3.5 mr-1" /> },
+    { id: 'submissions',  label: 'Submissions', icon: <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> },
+    { id: 'schedule',     label: 'Schedule',    icon: <Calendar className="h-3.5 w-3.5 mr-1" /> },
+    { id: 'leaderboard',  label: 'Leaderboard', icon: <Trophy className="h-3.5 w-3.5 mr-1" /> },
   ];
 
   return (
@@ -1635,6 +1663,147 @@ export default function Teams() {
                   ))}
                 </CardContent>
               </Card>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Leaderboard ── */}
+      {tab === 'leaderboard' && (() => {
+        const METRICS: { id: LeaderboardMetric; label: string; unit: string; higherBetter: boolean }[] = [
+          { id: 'ippt_total', label: 'IPPT Score',     unit: 'pts',  higherBetter: true  },
+          { id: 'pushups',    label: 'Push-ups',       unit: 'reps', higherBetter: true  },
+          { id: 'situps',     label: 'Sit-ups',        unit: 'reps', higherBetter: true  },
+          { id: 'run',        label: '2.4km Run',      unit: '',     higherBetter: false },
+          { id: 'activities', label: 'Activities',     unit: 'logs', higherBetter: true  },
+        ];
+
+        const getValue = (m: typeof members[0]): number | null => {
+          const p = m.profile;
+          if (!p) return null;
+          if (lbMetric === 'ippt_total') {
+            if (!p.ippt_pushups || !p.ippt_situps || !p.ippt_run_seconds || !p.age) return null;
+            return calcIpptAward(p.ippt_pushups, p.ippt_situps, p.ippt_run_seconds, p.age).total;
+          }
+          if (lbMetric === 'pushups')    return p.ippt_pushups ?? null;
+          if (lbMetric === 'situps')     return p.ippt_situps ?? null;
+          if (lbMetric === 'run')        return p.ippt_run_seconds ?? null;
+          if (lbMetric === 'activities') return activityCounts[m.user_id] ?? 0;
+          return null;
+        };
+
+        const metric = METRICS.find(m => m.id === lbMetric)!;
+
+        const ranked = members
+          .map(m => ({ member: m, value: getValue(m) }))
+          .filter(r => r.value !== null)
+          .sort((a, b) => metric.higherBetter ? (b.value! - a.value!) : (a.value! - b.value!));
+
+        const noData = members
+          .map(m => ({ member: m, value: getValue(m) }))
+          .filter(r => r.value === null);
+
+        const maxVal = ranked.length > 0 ? ranked[0].value! : 1;
+
+        const AWARD_COLORS = ['text-yellow-500', 'text-slate-400', 'text-orange-400'];
+        const AWARD_BG     = ['bg-yellow-50 border-yellow-300 dark:bg-yellow-900/20', 'bg-slate-50 border-slate-200 dark:bg-slate-800/30', 'bg-orange-50 border-orange-200 dark:bg-orange-900/20'];
+        const MEDAL_ICONS  = ['🥇', '🥈', '🥉'];
+
+        return (
+          <div className="space-y-4">
+            {/* Metric selector */}
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {METRICS.map(m => (
+                <button key={m.id} onClick={() => setLbMetric(m.id)}
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
+                    ${lbMetric === m.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border hover:bg-muted'}`}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {ranked.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Trophy className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-medium">No data yet</p>
+                <p className="text-xs mt-1 opacity-70">Members need to save their {metric.label} first</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {ranked.map((r, i) => {
+                  const p = r.member.profile!;
+                  const isMe = r.member.user_id === user?.id;
+                  const barPct = maxVal > 0 ? (r.value! / maxVal) * 100 : 0;
+                  const displayVal = lbMetric === 'run'
+                    ? fmtTime(r.value)
+                    : `${r.value}${metric.unit ? ' ' + metric.unit : ''}`;
+                  const ippt = (lbMetric === 'ippt_total' && p.ippt_pushups && p.ippt_situps && p.ippt_run_seconds && p.age)
+                    ? calcIpptAward(p.ippt_pushups, p.ippt_situps, p.ippt_run_seconds, p.age)
+                    : null;
+
+                  return (
+                    <div key={r.member.user_id}
+                      className={`rounded-xl border p-3 transition-all ${i < 3 ? AWARD_BG[i] : 'bg-card'} ${isMe ? 'ring-2 ring-primary' : ''}`}>
+                      <div className="flex items-center gap-3">
+                        {/* Rank */}
+                        <div className={`text-lg font-black w-8 text-center shrink-0 ${i < 3 ? AWARD_COLORS[i] : 'text-muted-foreground'}`}>
+                          {i < 3 ? MEDAL_ICONS[i] : `#${i + 1}`}
+                        </div>
+                        {/* Avatar */}
+                        <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">
+                          {p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        {/* Name + value */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold">
+                              {p.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p.full_name}
+                            </span>
+                            {isMe && <Badge variant="outline" className="text-xs">You</Badge>}
+                            {ippt && (
+                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
+                                {ippt.award}
+                              </span>
+                            )}
+                          </div>
+                          {/* Bar */}
+                          <div className="mt-1.5 h-1.5 rounded-full bg-border overflow-hidden">
+                            <div className="h-full rounded-full bg-primary transition-all"
+                              style={{ width: `${lbMetric === 'run' ? (100 - barPct + 10) : barPct}%` }} />
+                          </div>
+                        </div>
+                        {/* Value */}
+                        <span className={`text-base font-bold tabular-nums shrink-0 ${i < 3 ? AWARD_COLORS[i] : 'text-foreground'}`}>
+                          {displayVal}
+                        </span>
+                      </div>
+                      {/* Sub-stats for IPPT */}
+                      {lbMetric === 'ippt_total' && p.ippt_pushups && p.ippt_situps && p.ippt_run_seconds && (
+                        <p className="text-xs text-muted-foreground mt-1.5 pl-20">
+                          PU: {p.ippt_pushups} · SU: {p.ippt_situps} · Run: {fmtTime(p.ippt_run_seconds)}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Members with no data */}
+                {noData.length > 0 && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-muted-foreground px-1 mb-2">No {metric.label} data</p>
+                    <div className="flex flex-wrap gap-2">
+                      {noData.map(r => {
+                        const p = r.member.profile;
+                        return (
+                          <span key={r.member.user_id} className="text-xs bg-muted rounded-full px-3 py-1 text-muted-foreground">
+                            {p?.full_name ?? 'Member'}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         );
