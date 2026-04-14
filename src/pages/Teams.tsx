@@ -16,8 +16,11 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from '@/components/ui/sheet';
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
   Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
-  Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock,
+  Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords,
 } from 'lucide-react';
 
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
@@ -40,6 +43,93 @@ const fmtTime=(sec:number|null)=>sec?`${Math.floor(sec/60)}:${String(sec%60).pad
 const ACTIVITY_EMOJIS:Record<string,string>={running:'🏃',jogging:'👟',walking:'🚶',swimming:'🏊',cycling:'🚴',ippt_training:'🪖',gym:'🏋️',strength_training:'💪',calisthenics:'🤸',others:'➕'};
 
 type Tab = 'activities' | 'members' | 'submissions' | 'schedule';
+type TeamRole = 'admin' | 'pt_ic' | 'spartan' | 'member';
+
+// ─── Role display helpers ─────────────────────────────────────────────────────
+
+const ROLE_LABEL: Record<TeamRole, string> = {
+  admin:   'Team Admin',
+  pt_ic:   'PT IC',
+  spartan: 'Spartan',
+  member:  'Member',
+};
+
+const ROLE_BADGE: Record<TeamRole, string> = {
+  admin:   'bg-yellow-100 text-yellow-800 border-yellow-300',
+  pt_ic:   'bg-blue-100 text-blue-800 border-blue-300',
+  spartan: 'bg-red-100 text-red-800 border-red-300',
+  member:  'bg-muted text-muted-foreground border-border',
+};
+
+function RoleIcon({ role }: { role: TeamRole }) {
+  if (role === 'admin')   return <Crown className="h-3.5 w-3.5 text-yellow-500" />;
+  if (role === 'pt_ic')   return <Shield className="h-3.5 w-3.5 text-blue-500" />;
+  if (role === 'spartan') return <Swords className="h-3.5 w-3.5 text-red-500" />;
+  return null;
+}
+
+// ─── Triple-confirm delete dialog ────────────────────────────────────────────
+
+function TripleConfirmDelete({ teamName, onConfirm }: { teamName: string; onConfirm: () => void }) {
+  const [step, setStep] = useState(0);
+
+  const STEPS = [
+    {
+      title: 'Delete team?',
+      desc: `This will permanently delete "${teamName}" and remove all members. This cannot be undone.`,
+      action: 'Yes, continue',
+    },
+    {
+      title: 'Are you absolutely sure?',
+      desc: 'All activities shared to this team, member roles, and team data will be lost forever.',
+      action: 'Yes, I understand',
+    },
+    {
+      title: 'Final confirmation',
+      desc: `Type "DELETE" in your mind and confirm. There is no recovery after this step.`,
+      action: 'DELETE TEAM',
+    },
+  ];
+
+  const current = STEPS[step];
+
+  return (
+    <AlertDialog onOpenChange={open => { if (!open) setStep(0); }}>
+      <AlertDialogTrigger asChild>
+        <Button variant="destructive" className="w-full">
+          <Trash2 className="h-4 w-4 mr-2" /> Delete Team
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{current.title}</AlertDialogTitle>
+          <AlertDialogDescription>{current.desc}</AlertDialogDescription>
+          {step > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">Step {step + 1} of 3</p>
+          )}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setStep(0)}>Cancel</AlertDialogCancel>
+          {step < 2 ? (
+            <AlertDialogAction
+              onClick={e => { e.preventDefault(); setStep(s => s + 1); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {current.action}
+            </AlertDialogAction>
+          ) : (
+            <AlertDialogAction
+              onClick={onConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {current.action}
+            </AlertDialogAction>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 // ─── Mini calendar helpers ────────────────────────────────────────────────────
 
@@ -57,9 +147,11 @@ const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 export default function Teams() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
-  const { team, members, feed, myRole, loading, createTeam, joinTeam, deleteTeam, removeMember, updateTeam, refreshFeed } = useTeam();
+  const { team, members, feed, myRole, myTeamRole, loading, createTeam, joinTeam, deleteTeam, removeMember, updateTeam, updateMemberRole, refreshFeed } = useTeam();
 
-  const isAdmin = (profile as any)?.is_admin === true;
+  const isAdmin       = (profile as any)?.is_admin === true;
+  const canManage     = myTeamRole === 'admin' || myTeamRole === 'pt_ic';
+  const canAssignPTIC = myTeamRole === 'admin';
 
   const [tab, setTab]               = useState<Tab>('activities');
   const [createName, setCreateName] = useState('');
@@ -79,6 +171,9 @@ export default function Teams() {
   const [subTemp, setSubTemp]       = useState('');
   const [subNotes, setSubNotes]     = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Role assignment state
+  const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
 
   // Calendar
   const today = new Date();
@@ -113,16 +208,21 @@ export default function Teams() {
     toast({ title: 'Team settings saved!' });
   };
 
+  const handleRoleChange = async (userId: string, newRole: TeamRole) => {
+    setRoleUpdating(userId);
+    await updateMemberRole(userId, newRole);
+    setRoleUpdating(null);
+    toast({ title: `Role updated to ${ROLE_LABEL[newRole]}` });
+  };
+
   const handleSubmission = async () => {
     const tempVal = parseFloat(subTemp);
     if (!subTemp || isNaN(tempVal)) { toast({ title: 'Enter a valid temperature', variant: 'destructive' }); return; }
     if (tempVal < 35 || tempVal > 42) { toast({ title: 'Temperature must be between 35°C and 42°C', variant: 'destructive' }); return; }
     setSubmitting(true);
-    // Placeholder — wire to your submissions table when ready
     await new Promise(r => setTimeout(r, 600));
     setSubmitting(false);
-    setSubTemp('');
-    setSubNotes('');
+    setSubTemp(''); setSubNotes('');
     toast({ title: `${subType} submission recorded!`, description: `Temp: ${tempVal}°C` });
   };
 
@@ -215,7 +315,7 @@ export default function Teams() {
 
   // ── Has team ──────────────────────────────────────────────────────────────────
 
-  const daysInMonth  = getDaysInMonth(calYear, calMonth);
+  const daysInMonth    = getDaysInMonth(calYear, calMonth);
   const firstDayOfWeek = getFirstDayOfWeek(calYear, calMonth);
   const isToday = (d: number) => d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
 
@@ -238,7 +338,7 @@ export default function Teams() {
             <p className="text-xs text-muted-foreground mt-1">{members.length} member{members.length !== 1 ? 's' : ''}</p>
           </div>
 
-          {/* Settings gear button */}
+          {/* Settings sheet — visible to all members */}
           <Sheet open={settingsOpen} onOpenChange={open => { if (open) { setEditName(team.name); setEditDesc(team.description ?? ''); } setSettingsOpen(open); }}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 ml-2">
@@ -251,64 +351,53 @@ export default function Teams() {
               </SheetHeader>
               <div className="space-y-6 mt-6">
 
-                {/* Team info */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Team Info</h3>
-                  <div className="space-y-2">
-                    <Label>Team Name</Label>
-                    <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Team name" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                    <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this team about?" rows={3} />
-                  </div>
-                  <Button onClick={handleSaveSettings} disabled={editSaving} className="w-full">
-                    {editSaving ? 'Saving...' : 'Save Changes'}
-                  </Button>
-                </div>
-
-                {/* Invite code */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Invite Code</h3>
-                  <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-                    <p className="flex-1 text-sm font-mono font-semibold tracking-wider">{team.invite_code}</p>
-                    <Button variant="ghost" size="icon" onClick={copyCode} className="h-8 w-8">
-                      <Copy className="h-4 w-4" />
+                {/* Team info — editable by admin only */}
+                {myTeamRole === 'admin' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Team Info</h3>
+                    <div className="space-y-2">
+                      <Label>Team Name</Label>
+                      <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Team name" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                      <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this team about?" rows={3} />
+                    </div>
+                    <Button onClick={handleSaveSettings} disabled={editSaving} className="w-full">
+                      {editSaving ? 'Saving...' : 'Save Changes'}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">Share this code with members to join your team.</p>
-                </div>
+                )}
 
-                {/* Danger zone */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-destructive uppercase tracking-wide">Danger Zone</h3>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive" className="w-full">
-                        <Trash2 className="h-4 w-4 mr-2" /> Delete Team
+                {/* Invite code — visible to admin & PT IC */}
+                {canManage && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Invite Code</h3>
+                    <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+                      <p className="flex-1 text-sm font-mono font-semibold tracking-wider">{team.invite_code}</p>
+                      <Button variant="ghost" size="icon" onClick={copyCode} className="h-8 w-8">
+                        <Copy className="h-4 w-4" />
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete team?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will permanently delete <strong>{team.name}</strong> and remove all members. This cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={deleteTeam} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Share this code with members to join your team.</p>
+                  </div>
+                )}
+
+                {/* Danger zone — admin & PT IC can delete */}
+                {canManage && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-destructive uppercase tracking-wide">Danger Zone</h3>
+                    <TripleConfirmDelete teamName={team.name} onConfirm={deleteTeam} />
+                  </div>
+                )}
 
               </div>
             </SheetContent>
           </Sheet>
         </div>
 
-        {myRole === 'admin' && (
+        {/* Invite code quick-copy for admin */}
+        {myTeamRole === 'admin' && (
           <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
             <div className="flex-1">
               <p className="text-xs text-muted-foreground">Invite Code</p>
@@ -317,6 +406,16 @@ export default function Teams() {
             <Button variant="ghost" size="icon" onClick={copyCode} className="h-8 w-8">
               <Copy className="h-4 w-4" />
             </Button>
+          </div>
+        )}
+
+        {/* My role badge */}
+        {myTeamRole && myTeamRole !== 'member' && (
+          <div className="mt-2">
+            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${ROLE_BADGE[myTeamRole]}`}>
+              <RoleIcon role={myTeamRole} />
+              {ROLE_LABEL[myTeamRole]}
+            </span>
           </div>
         )}
       </div>
@@ -392,60 +491,118 @@ export default function Teams() {
               <p className="text-sm">No members yet</p>
             </div>
           )}
+
+          {/* Role legend */}
+          {members.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-1">
+              {(['admin', 'pt_ic', 'spartan', 'member'] as TeamRole[]).map(r => (
+                <span key={r} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${ROLE_BADGE[r]}`}>
+                  <RoleIcon role={r} />{ROLE_LABEL[r]}
+                </span>
+              ))}
+            </div>
+          )}
+
           {members.map(m => {
             const p = m.profile;
             const isMe = m.user_id === user!.id;
+            const memberTeamRole = (m.team_role ?? 'member') as TeamRole;
             const ippt = p?.ippt_pushups && p?.ippt_situps && p?.ippt_run_seconds && p?.age
               ? calcIpptAward(p.ippt_pushups, p.ippt_situps, p.ippt_run_seconds, p.age) : null;
+
+            // What roles can the current user assign to this member?
+            const assignableRoles: TeamRole[] = (() => {
+              if (isMe) return [];
+              if (canAssignPTIC) return ['admin', 'pt_ic', 'spartan', 'member']; // admin can assign all
+              if (myTeamRole === 'pt_ic') return ['spartan', 'member'];           // PT IC can only assign spartan/member
+              return [];
+            })();
+
+            const canKick = canManage && !isMe && memberTeamRole !== 'admin';
+
             return (
-              <div key={m.id || m.user_id} className="rounded-xl border bg-card p-4 flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">
-                  {p?.full_name ? initials(p.full_name) : '?'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold">
-                      {p?.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p?.full_name ?? 'Member'}
-                    </span>
-                    {m.role === 'admin' && <Crown className="h-3.5 w-3.5 text-yellow-500 shrink-0" />}
-                    {isMe && <Badge variant="outline" className="text-xs">You</Badge>}
-                    {ippt && (
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
-                        IPPT {ippt.award} · {ippt.total}pts
+              <div key={m.id || m.user_id} className="rounded-xl border bg-card p-4 space-y-3">
+                {/* Member info row */}
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">
+                    {p?.full_name ? initials(p.full_name) : '?'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold">
+                        {p?.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p?.full_name ?? 'Member'}
                       </span>
+                      <RoleIcon role={memberTeamRole} />
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${ROLE_BADGE[memberTeamRole]}`}>
+                        {ROLE_LABEL[memberTeamRole]}
+                      </span>
+                      {isMe && <Badge variant="outline" className="text-xs">You</Badge>}
+                      {ippt && (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
+                          IPPT {ippt.award} · {ippt.total}pts
+                        </span>
+                      )}
+                    </div>
+                    {ippt && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        PU: {p?.ippt_pushups} · SU: {p?.ippt_situps} · Run: {fmtTime(p?.ippt_run_seconds ?? null)}
+                      </p>
+                    )}
+                    {!ippt && p?.rank && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{p.rank}</p>
                     )}
                   </div>
-                  {ippt && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      PU: {p?.ippt_pushups} · SU: {p?.ippt_situps} · Run: {fmtTime(p?.ippt_run_seconds ?? null)}
-                    </p>
-                  )}
-                  {!ippt && p?.rank && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{p.rank}</p>
+
+                  {/* Kick button */}
+                  {canKick && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remove member?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {p?.full_name ?? 'This member'} will be removed from the team.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => removeMember(m.user_id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Remove
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   )}
                 </div>
-                {myRole === 'admin' && !isMe && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Remove member?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {p?.full_name ?? 'This member'} will be removed from the team.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => removeMember(m.user_id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                          Remove
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+
+                {/* Role assignment — only shown if current user can assign roles to this member */}
+                {assignableRoles.length > 0 && (
+                  <div className="flex items-center gap-2 pt-1 border-t">
+                    <span className="text-xs text-muted-foreground shrink-0">Assign role:</span>
+                    <Select
+                      value={memberTeamRole}
+                      onValueChange={val => handleRoleChange(m.user_id, val as TeamRole)}
+                      disabled={roleUpdating === m.user_id}
+                    >
+                      <SelectTrigger className="h-7 text-xs flex-1 max-w-[160px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assignableRoles.map(r => (
+                          <SelectItem key={r} value={r} className="text-xs">
+                            {ROLE_LABEL[r]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {roleUpdating === m.user_id && (
+                      <span className="text-xs text-muted-foreground">Saving...</span>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -464,8 +621,6 @@ export default function Teams() {
               <CardDescription>Record your parade state and temperature</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-
-              {/* SFT / PT toggle */}
               <div className="space-y-2">
                 <Label>Session Type</Label>
                 <div className="flex rounded-lg border overflow-hidden">
@@ -477,42 +632,22 @@ export default function Teams() {
                   ))}
                 </div>
               </div>
-
-              {/* Temperature */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5">
                   <Thermometer className="h-4 w-4" /> Temperature (°C)
                 </Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="35"
-                  max="42"
-                  placeholder="e.g. 36.5"
-                  value={subTemp}
-                  onChange={e => setSubTemp(e.target.value)}
-                />
+                <Input type="number" step="0.1" min="35" max="42" placeholder="e.g. 36.5" value={subTemp} onChange={e => setSubTemp(e.target.value)} />
               </div>
-
-              {/* Notes */}
               <div className="space-y-2">
                 <Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                <Textarea
-                  placeholder="Any remarks..."
-                  value={subNotes}
-                  onChange={e => setSubNotes(e.target.value)}
-                  rows={2}
-                />
+                <Textarea placeholder="Any remarks..." value={subNotes} onChange={e => setSubNotes(e.target.value)} rows={2} />
               </div>
-
               <Button onClick={handleSubmission} disabled={submitting} className="w-full">
                 <Clock className="h-4 w-4 mr-2" />
                 {submitting ? 'Submitting...' : `Submit ${subType} Attendance`}
               </Button>
             </CardContent>
           </Card>
-
-          {/* Placeholder for submission history */}
           <div className="text-center py-8 text-muted-foreground">
             <Clock className="h-8 w-8 mx-auto mb-2 opacity-30" />
             <p className="text-sm">Submission history coming soon</p>
@@ -525,22 +660,16 @@ export default function Teams() {
         <div className="space-y-4">
           <Card>
             <CardContent className="pt-4 px-3 pb-3">
-
-              {/* Month nav */}
               <div className="flex items-center justify-between mb-3 px-1">
                 <button onClick={prevMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">‹</button>
                 <span className="text-sm font-semibold">{MONTHS[calMonth]} {calYear}</span>
                 <button onClick={nextMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">›</button>
               </div>
-
-              {/* Day headers */}
               <div className="grid grid-cols-7 mb-1">
                 {DAYS.map(d => (
                   <div key={d} className="text-center text-xs font-medium text-muted-foreground py-1">{d}</div>
                 ))}
               </div>
-
-              {/* Day cells */}
               <div className="grid grid-cols-7 gap-y-1">
                 {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} />)}
                 {Array.from({ length: daysInMonth }).map((_, i) => {
@@ -548,15 +677,11 @@ export default function Teams() {
                   const isSelected = selectedDay === d;
                   const todayMark = isToday(d);
                   return (
-                    <button
-                      key={d}
-                      onClick={() => setSelectedDay(isSelected ? null : d)}
-                      className={`
-                        mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm transition-colors
+                    <button key={d} onClick={() => setSelectedDay(isSelected ? null : d)}
+                      className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm transition-colors
                         ${isSelected ? 'bg-primary text-primary-foreground font-semibold' : ''}
                         ${todayMark && !isSelected ? 'border border-primary text-primary font-semibold' : ''}
-                        ${!isSelected && !todayMark ? 'hover:bg-muted text-foreground' : ''}
-                      `}>
+                        ${!isSelected && !todayMark ? 'hover:bg-muted text-foreground' : ''}`}>
                       {d}
                     </button>
                   );
@@ -564,14 +689,10 @@ export default function Teams() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Selected day detail */}
           {selectedDay && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">
-                  {selectedDay} {MONTHS[calMonth]} {calYear}
-                </CardTitle>
+                <CardTitle className="text-base">{selectedDay} {MONTHS[calMonth]} {calYear}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-center py-6 text-muted-foreground">
