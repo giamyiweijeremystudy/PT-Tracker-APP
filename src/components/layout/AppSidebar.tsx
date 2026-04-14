@@ -1,4 +1,4 @@
-import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings, Activity, Users, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings, Activity, Users, CalendarDays, MessageSquare } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,6 +17,7 @@ const mainItems = [
   { title: 'Activities',           url: '/activities',   icon: Activity        },
   { title: 'Teams',                url: '/teams',        icon: Users           },
   { title: 'Schedule',             url: '/schedule',     icon: CalendarDays    },
+  { title: 'PT Assistant',         url: '/chat',         icon: MessageSquare   },
 ];
 
 export function AppSidebar() {
