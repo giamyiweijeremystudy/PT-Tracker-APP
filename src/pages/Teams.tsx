@@ -57,7 +57,7 @@ const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 export default function Teams() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
-  const { team, members, feed, myRole, loading, createTeam, joinTeam, deleteTeam, removeMember, updateTeam } = useTeam();
+  const { team, members, feed, myRole, loading, createTeam, joinTeam, deleteTeam, removeMember, updateTeam, refreshFeed } = useTeam();
 
   const isAdmin = (profile as any)?.is_admin === true;
 
@@ -341,6 +341,12 @@ export default function Teams() {
           </div>
         ) : (
           <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">{feed.length} recent activities</p>
+              <Button variant="ghost" size="sm" onClick={refreshFeed} className="text-xs h-7 px-2">
+                Refresh
+              </Button>
+            </div>
             {feed.map(a => {
               const mi = a.profile?.full_name ? initials(a.profile.full_name) : '?';
               const emoji = ACTIVITY_EMOJIS[a.type] ?? '🏃';
