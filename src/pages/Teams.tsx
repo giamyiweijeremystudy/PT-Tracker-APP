@@ -8,8 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Users, Plus, Copy, Trash2, Crown, MapPin, Activity, Lock, Settings } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
+} from '@/components/ui/sheet';
+import {
+  Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
+  Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock,
+} from 'lucide-react';
 
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
 
@@ -17,7 +26,7 @@ const PUSHUP_RAW = [[60,25,"","","","","","","","","","","","",""],[59,24,25,"",
 const SITUP_RAW  = [[60,25,"","","","","","","","","","","","",""],[59,24,25,"","","","","","","","","","","",""],[58,24,24,25,"","","","","","","","","","",""],[57,24,24,24,25,"","","","","","","","","",""],[56,24,24,24,24,25,"","","","","","","","",""],[55,23,24,24,24,24,25,"","","","","","","",""],[54,23,23,24,24,24,24,25,"","","","","","",""],[53,23,23,23,24,24,24,24,25,"","","","","",""],[52,23,23,23,23,24,24,24,24,"","","","","",""],[51,22,23,23,23,23,24,24,24,25,"","","","",""],[50,22,22,23,23,23,23,24,24,24,"","","","",""],[49,22,22,22,23,23,23,23,24,24,25,"","","",""],[48,22,22,22,22,23,23,23,23,24,24,"","","",""],[47,21,22,22,22,22,23,23,23,24,24,25,"","",""],[46,21,21,22,22,22,22,23,23,23,24,24,"","",""],[45,21,21,21,22,22,22,22,23,23,24,24,24,"",""],[44,21,21,21,21,22,22,22,22,23,23,24,24,25,""],[43,20,21,21,21,21,22,22,22,23,23,23,24,24,""],[42,20,20,21,21,21,21,22,22,22,23,23,24,24,25],[41,20,20,20,21,21,21,21,22,22,23,23,23,24,24],[40,20,20,20,20,21,21,21,21,22,22,23,23,24,24],[39,19,20,20,20,20,21,21,21,22,22,22,23,23,24],[38,19,19,20,20,20,20,21,21,21,22,22,23,23,23],[37,18,19,19,20,20,20,20,21,21,22,22,22,23,23],[36,18,18,19,19,20,20,20,20,21,21,22,22,22,23],[35,17,18,18,19,19,20,20,20,21,21,21,22,22,22],[34,16,17,18,18,19,19,20,20,20,21,21,21,22,22],[33,15,16,17,18,18,19,19,20,20,20,21,21,21,22],[32,14,15,16,17,18,18,19,19,20,20,20,21,21,21],[31,14,14,15,16,17,18,18,19,19,20,20,20,21,21],[30,13,14,14,15,16,17,18,18,19,19,20,20,20,21],[29,13,13,14,14,15,16,17,18,18,18,19,20,20,20],[28,12,13,13,14,14,15,16,17,18,18,19,19,20,20],[27,11,12,13,13,14,14,15,16,17,18,18,19,19,20],[26,10,11,12,13,13,14,14,15,16,17,18,18,19,19],[25,9,10,11,12,13,13,14,14,15,16,17,18,18,19],[24,8,9,10,11,12,13,13,14,14,15,16,17,18,18],[23,7,8,9,10,11,12,13,13,14,14,15,16,17,18],[22,7,7,8,9,10,11,12,13,13,14,14,15,16,17],[21,6,7,7,8,9,10,11,12,13,13,14,14,15,16],[20,6,6,7,7,8,9,10,11,12,13,13,14,14,15],[19,5,6,6,7,7,8,9,10,11,12,13,13,14,14],[18,4,5,6,6,7,7,8,9,10,11,12,13,13,14],[17,3,4,5,6,6,7,7,8,9,10,11,12,13,13],[16,2,3,4,5,6,6,7,7,8,9,10,11,12,13],[15,1,2,3,4,5,6,6,7,7,8,9,10,11,12],[14,0,1,2,3,4,5,6,6,7,7,8,9,10,11]];
 const RUN_RAW = [["8:30",50],["8:40",49,50],["8:50",48,49,50],["9:00",47,48,49],["9:10",46,47,48,50],["9:20",45,46,47,49,50],["9:30",44,45,46,48,49,50],["9:40",43,44,45,47,48,49,50],["9:50",42,43,44,46,47,48,49,50],["10:00",41,42,43,45,46,47,48,49,50],["10:10",40,41,42,44,45,46,47,48,49,50],["10:20",39,40,41,43,44,45,46,47,48,49,50],["10:30",38,39,40,42,43,44,45,46,47,48,49,50],["10:40",38,38,39,41,42,43,44,45,46,47,48,49,50],["10:50",37,38,38,40,41,42,43,44,45,46,47,48,49,50],["11:00",37,37,38,39,40,41,42,43,44,45,46,47,48,49],["11:10",36,37,37,38,39,40,41,42,43,44,45,46,47,48],["11:20",36,36,37,38,38,39,40,41,42,43,44,45,46,47],["11:30",35,36,36,37,38,38,39,40,41,42,43,44,45,46],["11:40",35,35,36,37,37,38,38,39,40,41,42,43,44,45],["11:50",34,35,35,36,37,37,38,38,39,40,41,42,43,44],["12:00",33,34,35,36,36,37,37,38,38,39,40,41,42,43],["12:10",32,33,34,35,36,36,37,37,38,38,39,40,41,42],["12:20",31,32,33,35,35,36,36,37,37,38,38,39,40,41],["12:30",30,31,32,34,35,35,36,36,37,37,38,38,39,40],["12:40",29,30,31,33,34,35,35,36,36,37,37,38,38,39],["12:50",28,29,30,32,33,34,35,35,36,36,37,37,38,38],["13:00",27,28,29,31,32,33,34,35,35,36,36,37,37,38],["13:10",26,27,28,30,31,32,33,34,35,35,36,36,37,37],["13:20",25,26,27,29,30,31,32,33,34,35,35,36,36,37],["13:30",24,25,26,28,29,30,31,32,33,34,35,35,36,36],["13:40",23,24,25,27,28,29,30,31,32,33,34,35,35,36],["13:50",22,23,24,26,27,28,29,30,31,32,33,34,35,35],["14:00",21,22,23,25,26,27,28,29,30,31,32,33,34,35],["14:10",20,21,22,24,25,26,27,28,29,30,31,32,33,34],["14:20",19,20,21,23,24,25,26,27,28,29,30,31,32,33],["14:30",18,19,20,22,23,24,25,26,27,28,29,30,31,32],["14:40",16,18,19,21,22,23,24,25,26,27,28,29,30,31],["14:50",14,16,18,20,21,22,23,24,25,26,27,28,29,30],["15:00",12,14,16,19,20,21,22,23,24,25,26,27,28,29],["15:10",10,12,14,18,19,20,21,22,23,24,25,26,27,28],["15:20",8,10,12,16,18,19,20,21,22,23,24,25,26,27],["15:30",6,8,10,14,16,18,19,20,21,22,23,24,25,26],["15:40",4,6,8,12,14,16,18,19,20,21,22,23,24,25],["15:50",2,4,6,10,12,14,16,18,19,20,21,22,23,24],["16:00",1,2,4,8,10,12,14,16,18,19,20,21,22,23],["16:10",0,1,2,6,8,10,12,14,16,18,19,20,21,22]];
 
-function getAgeGroupIdx(age: number) { if(age<22)return 0;if(age<=24)return 1;if(age<=27)return 2;if(age<=30)return 3;if(age<=33)return 4;if(age<=36)return 5;if(age<=39)return 6;if(age<=42)return 7;if(age<=45)return 8;if(age<=48)return 9;if(age<=51)return 10;if(age<=54)return 11;if(age<=57)return 12;return 13; }
+function getAgeGroupIdx(age: number){if(age<22)return 0;if(age<=24)return 1;if(age<=27)return 2;if(age<=30)return 3;if(age<=33)return 4;if(age<=36)return 5;if(age<=39)return 6;if(age<=42)return 7;if(age<=45)return 8;if(age<=48)return 9;if(age<=51)return 10;if(age<=54)return 11;if(age<=57)return 12;return 13;}
 function buildMap(raw:(number|string)[][]){const m=new Map<number,number[]>();for(const row of raw){const pts:number[]=[];for(let i=1;i<=14;i++){const v=row[i];pts.push(v===""||v===undefined?25:v as number);}m.set(row[0] as number,pts);}return m;}
 const PU_MAP=buildMap(PUSHUP_RAW),SU_MAP=buildMap(SITUP_RAW);
 function timeToSec(t:string){const[m,s]=t.split(':').map(Number);return m*60+s;}
@@ -30,7 +39,18 @@ const AWARD_STYLE:Record<string,string>={Gold:'bg-yellow-400 text-yellow-900',Si
 const fmtTime=(sec:number|null)=>sec?`${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`:'—';
 const ACTIVITY_EMOJIS:Record<string,string>={running:'🏃',jogging:'👟',walking:'🚶',swimming:'🏊',cycling:'🚴',ippt_training:'🪖',gym:'🏋️',strength_training:'💪',calisthenics:'🤸',others:'➕'};
 
-type Tab = 'feed' | 'members' | 'settings';
+type Tab = 'activities' | 'members' | 'submissions' | 'schedule';
+
+// ─── Mini calendar helpers ────────────────────────────────────────────────────
+
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+function getFirstDayOfWeek(year: number, month: number) {
+  return new Date(year, month, 1).getDay();
+}
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -41,17 +61,30 @@ export default function Teams() {
 
   const isAdmin = (profile as any)?.is_admin === true;
 
-  const [tab, setTab]               = useState<Tab>('feed');
+  const [tab, setTab]               = useState<Tab>('activities');
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
   const [creating, setCreating]     = useState(false);
   const [joinCode, setJoinCode]     = useState('');
   const [joining, setJoining]       = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Settings form state
+  // Settings form
   const [editName, setEditName]     = useState('');
   const [editDesc, setEditDesc]     = useState('');
   const [editSaving, setEditSaving] = useState(false);
+
+  // Submission form
+  const [subType, setSubType]       = useState<'SFT' | 'PT'>('PT');
+  const [subTemp, setSubTemp]       = useState('');
+  const [subNotes, setSubNotes]     = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Calendar
+  const today = new Date();
+  const [calYear, setCalYear]   = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
 
   const handleCreate = async () => {
     if (!createName.trim()) { toast({ title: 'Enter a team name', variant: 'destructive' }); return; }
@@ -76,7 +109,21 @@ export default function Teams() {
     setEditSaving(true);
     await updateTeam(editName, editDesc);
     setEditSaving(false);
+    setSettingsOpen(false);
     toast({ title: 'Team settings saved!' });
+  };
+
+  const handleSubmission = async () => {
+    const tempVal = parseFloat(subTemp);
+    if (!subTemp || isNaN(tempVal)) { toast({ title: 'Enter a valid temperature', variant: 'destructive' }); return; }
+    if (tempVal < 35 || tempVal > 42) { toast({ title: 'Temperature must be between 35°C and 42°C', variant: 'destructive' }); return; }
+    setSubmitting(true);
+    // Placeholder — wire to your submissions table when ready
+    await new Promise(r => setTimeout(r, 600));
+    setSubmitting(false);
+    setSubTemp('');
+    setSubNotes('');
+    toast({ title: `${subType} submission recorded!`, description: `Temp: ${tempVal}°C` });
   };
 
   const copyCode = () => {
@@ -86,6 +133,9 @@ export default function Teams() {
   };
 
   const initials = (name: string) => name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+  const prevMonth = () => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); setSelectedDay(null); };
+  const nextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); setSelectedDay(null); };
 
   // ── Loading ───────────────────────────────────────────────────────────────────
   if (loading) {
@@ -165,24 +215,99 @@ export default function Teams() {
 
   // ── Has team ──────────────────────────────────────────────────────────────────
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'feed',     label: 'Activity Feed', icon: <Activity className="h-4 w-4 inline mr-1.5" /> },
-    { id: 'members',  label: 'Members',       icon: <Users className="h-4 w-4 inline mr-1.5" /> },
-    { id: 'settings', label: 'Settings',      icon: <Settings className="h-4 w-4 inline mr-1.5" /> },
+  const daysInMonth  = getDaysInMonth(calYear, calMonth);
+  const firstDayOfWeek = getFirstDayOfWeek(calYear, calMonth);
+  const isToday = (d: number) => d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+
+  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'activities',  label: 'Activities',  icon: <Activity className="h-3.5 w-3.5 mr-1" /> },
+    { id: 'members',     label: 'Members',     icon: <Users className="h-3.5 w-3.5 mr-1" /> },
+    { id: 'submissions', label: 'Submissions', icon: <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> },
+    { id: 'schedule',    label: 'Schedule',    icon: <Calendar className="h-3.5 w-3.5 mr-1" /> },
   ];
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-10">
 
-      {/* Team header */}
+      {/* ── Team header ── */}
       <div className="rounded-2xl border bg-card p-4 shadow-sm">
         <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-foreground">{team.name}</h2>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-bold text-foreground truncate">{team.name}</h2>
             {team.description && <p className="text-sm text-muted-foreground mt-0.5">{team.description}</p>}
             <p className="text-xs text-muted-foreground mt-1">{members.length} member{members.length !== 1 ? 's' : ''}</p>
           </div>
+
+          {/* Settings gear button */}
+          <Sheet open={settingsOpen} onOpenChange={open => { if (open) { setEditName(team.name); setEditDesc(team.description ?? ''); } setSettingsOpen(open); }}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 ml-2">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>Team Settings</SheetTitle>
+              </SheetHeader>
+              <div className="space-y-6 mt-6">
+
+                {/* Team info */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Team Info</h3>
+                  <div className="space-y-2">
+                    <Label>Team Name</Label>
+                    <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Team name" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                    <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this team about?" rows={3} />
+                  </div>
+                  <Button onClick={handleSaveSettings} disabled={editSaving} className="w-full">
+                    {editSaving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+
+                {/* Invite code */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Invite Code</h3>
+                  <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+                    <p className="flex-1 text-sm font-mono font-semibold tracking-wider">{team.invite_code}</p>
+                    <Button variant="ghost" size="icon" onClick={copyCode} className="h-8 w-8">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Share this code with members to join your team.</p>
+                </div>
+
+                {/* Danger zone */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-destructive uppercase tracking-wide">Danger Zone</h3>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" className="w-full">
+                        <Trash2 className="h-4 w-4 mr-2" /> Delete Team
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete team?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete <strong>{team.name}</strong> and remove all members. This cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={deleteTeam} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
+
         {myRole === 'admin' && (
           <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
             <div className="flex-1">
@@ -196,28 +321,23 @@ export default function Teams() {
         )}
       </div>
 
-      {/* Tabs */}
+      {/* ── Tabs ── */}
       <div className="flex rounded-xl border overflow-hidden">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => {
-            if (t.id === 'settings') {
-              setEditName(team.name);
-              setEditDesc(team.description ?? '');
-            }
-            setTab(t.id);
-          }}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${tab === t.id ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors flex items-center justify-center ${tab === t.id ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
             {t.icon}{t.label}
           </button>
         ))}
       </div>
 
-      {/* Feed */}
-      {tab === 'feed' && (
+      {/* ── Activities ── */}
+      {tab === 'activities' && (
         feed.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Activity className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No activities from your team yet</p>
+          <div className="text-center py-16 text-muted-foreground">
+            <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p className="text-sm font-medium">No activities yet</p>
+            <p className="text-xs mt-1 opacity-70">Team members' activities will appear here</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -229,8 +349,8 @@ export default function Teams() {
                 <div key={a.id} className="rounded-2xl border bg-card shadow-sm overflow-hidden">
                   <div className="flex items-center gap-3 px-4 pt-4 pb-2">
                     <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">{mi}</div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <p className="text-sm font-semibold">{a.profile?.rank && a.profile.rank !== 'Other' ? `${a.profile.rank} ` : ''}{a.profile?.full_name ?? 'Member'}</p>
                         <span>{emoji}</span>
                         <span className="text-xs font-medium text-primary capitalize">{label}</span>
@@ -242,12 +362,12 @@ export default function Teams() {
                     </div>
                   </div>
                   {a.title && <p className="px-4 pb-1 text-sm font-semibold">{a.title}</p>}
-                  {a.description && <p className="px-4 pb-2 text-sm leading-relaxed">{a.description}</p>}
+                  {a.description && <p className="px-4 pb-2 text-sm leading-relaxed text-muted-foreground">{a.description}</p>}
                   {a.image_url && <img src={a.image_url} alt="activity" className="w-full max-h-72 object-cover" />}
                   {(a.duration_minutes || a.distance_km) && (
-                    <div className="flex gap-4 px-4 py-3 border-t">
-                      {a.duration_minutes && <div><div className="text-xs text-muted-foreground">Duration</div><div className="text-sm font-semibold">{a.duration_minutes} min</div></div>}
-                      {a.distance_km && <div><div className="text-xs text-muted-foreground">Distance</div><div className="text-sm font-semibold">{a.distance_km} km</div></div>}
+                    <div className="flex gap-6 px-4 py-3 border-t bg-muted/30">
+                      {a.duration_minutes && <div><p className="text-xs text-muted-foreground">Duration</p><p className="text-sm font-semibold">{a.duration_minutes} min</p></div>}
+                      {a.distance_km && <div><p className="text-xs text-muted-foreground">Distance</p><p className="text-sm font-semibold">{a.distance_km} km</p></div>}
                     </div>
                   )}
                 </div>
@@ -257,9 +377,15 @@ export default function Teams() {
         )
       )}
 
-      {/* Members */}
+      {/* ── Members ── */}
       {tab === 'members' && (
         <div className="space-y-3">
+          {members.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No members yet</p>
+            </div>
+          )}
           {members.map(m => {
             const p = m.profile;
             const isMe = m.user_id === user!.id;
@@ -272,26 +398,45 @@ export default function Teams() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold">{p?.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p?.full_name ?? 'Member'}</span>
-                    {m.role === 'admin' && <Crown className="h-3.5 w-3.5 text-yellow-500" />}
+                    <span className="text-sm font-semibold">
+                      {p?.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p?.full_name ?? 'Member'}
+                    </span>
+                    {m.role === 'admin' && <Crown className="h-3.5 w-3.5 text-yellow-500 shrink-0" />}
                     {isMe && <Badge variant="outline" className="text-xs">You</Badge>}
-                    {ippt && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>IPPT {ippt.award} · {ippt.total}pts</span>}
+                    {ippt && (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
+                        IPPT {ippt.award} · {ippt.total}pts
+                      </span>
+                    )}
                   </div>
-                  {ippt && <p className="text-xs text-muted-foreground mt-0.5">PU: {p?.ippt_pushups} · SU: {p?.ippt_situps} · Run: {fmtTime(p?.ippt_run_seconds ?? null)}</p>}
+                  {ippt && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      PU: {p?.ippt_pushups} · SU: {p?.ippt_situps} · Run: {fmtTime(p?.ippt_run_seconds ?? null)}
+                    </p>
+                  )}
+                  {!ippt && p?.rank && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{p.rank}</p>
+                  )}
                 </div>
                 {myRole === 'admin' && !isMe && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>Remove member?</AlertDialogTitle>
-                        <AlertDialogDescription>{p?.full_name ?? 'This member'} will be removed from the team.</AlertDialogDescription>
+                        <AlertDialogDescription>
+                          {p?.full_name ?? 'This member'} will be removed from the team.
+                        </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => removeMember(m.user_id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Remove</AlertDialogAction>
+                        <AlertDialogAction onClick={() => removeMember(m.user_id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                          Remove
+                        </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
@@ -302,76 +447,135 @@ export default function Teams() {
         </div>
       )}
 
-      {/* Settings — admin only */}
-      {tab === 'settings' && (
+      {/* ── Submissions ── */}
+      {tab === 'submissions' && (
         <div className="space-y-4">
-
-          {/* Edit team info */}
           <Card>
             <CardHeader>
-              <CardTitle>Team Info</CardTitle>
-              <CardDescription>Update your team's name and description</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-primary" /> Clock In
+              </CardTitle>
+              <CardDescription>Record your parade state and temperature</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+
+              {/* SFT / PT toggle */}
               <div className="space-y-2">
-                <Label>Team Name</Label>
-                <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Team name" />
+                <Label>Session Type</Label>
+                <div className="flex rounded-lg border overflow-hidden">
+                  {(['PT', 'SFT'] as const).map(t => (
+                    <button key={t} onClick={() => setSubType(t)}
+                      className={`flex-1 py-2 text-sm font-semibold transition-colors ${subType === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* Temperature */}
               <div className="space-y-2">
-                <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this team about?" rows={3} />
+                <Label className="flex items-center gap-1.5">
+                  <Thermometer className="h-4 w-4" /> Temperature (°C)
+                </Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="35"
+                  max="42"
+                  placeholder="e.g. 36.5"
+                  value={subTemp}
+                  onChange={e => setSubTemp(e.target.value)}
+                />
               </div>
-              <Button onClick={handleSaveSettings} disabled={editSaving} className="w-full">
-                {editSaving ? 'Saving...' : 'Save Changes'}
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Textarea
+                  placeholder="Any remarks..."
+                  value={subNotes}
+                  onChange={e => setSubNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+
+              <Button onClick={handleSubmission} disabled={submitting} className="w-full">
+                <Clock className="h-4 w-4 mr-2" />
+                {submitting ? 'Submitting...' : `Submit ${subType} Attendance`}
               </Button>
             </CardContent>
           </Card>
 
-          {/* Invite code */}
+          {/* Placeholder for submission history */}
+          <div className="text-center py-8 text-muted-foreground">
+            <Clock className="h-8 w-8 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">Submission history coming soon</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Schedule ── */}
+      {tab === 'schedule' && (
+        <div className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Invite Code</CardTitle>
-              <CardDescription>Share this code with members to join your team</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-                <p className="flex-1 text-sm font-mono font-semibold tracking-wider">{team.invite_code}</p>
-                <Button variant="ghost" size="icon" onClick={copyCode} className="h-8 w-8">
-                  <Copy className="h-4 w-4" />
-                </Button>
+            <CardContent className="pt-4 px-3 pb-3">
+
+              {/* Month nav */}
+              <div className="flex items-center justify-between mb-3 px-1">
+                <button onClick={prevMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">‹</button>
+                <span className="text-sm font-semibold">{MONTHS[calMonth]} {calYear}</span>
+                <button onClick={nextMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">›</button>
+              </div>
+
+              {/* Day headers */}
+              <div className="grid grid-cols-7 mb-1">
+                {DAYS.map(d => (
+                  <div key={d} className="text-center text-xs font-medium text-muted-foreground py-1">{d}</div>
+                ))}
+              </div>
+
+              {/* Day cells */}
+              <div className="grid grid-cols-7 gap-y-1">
+                {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} />)}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const d = i + 1;
+                  const isSelected = selectedDay === d;
+                  const todayMark = isToday(d);
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => setSelectedDay(isSelected ? null : d)}
+                      className={`
+                        mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm transition-colors
+                        ${isSelected ? 'bg-primary text-primary-foreground font-semibold' : ''}
+                        ${todayMark && !isSelected ? 'border border-primary text-primary font-semibold' : ''}
+                        ${!isSelected && !todayMark ? 'hover:bg-muted text-foreground' : ''}
+                      `}>
+                      {d}
+                    </button>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
 
-          {/* Danger zone */}
-          <Card className="border-destructive/40">
-            <CardHeader>
-              <CardTitle className="text-destructive">Danger Zone</CardTitle>
-              <CardDescription>Irreversible actions for this team</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" className="w-full">
-                    <Trash2 className="h-4 w-4 mr-2" /> Delete Team
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete team?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will permanently delete <strong>{team.name}</strong> and remove all members. This cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={deleteTeam} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </CardContent>
-          </Card>
-
+          {/* Selected day detail */}
+          {selectedDay && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">
+                  {selectedDay} {MONTHS[calMonth]} {calYear}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-6 text-muted-foreground">
+                  <Calendar className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No events scheduled</p>
+                  <p className="text-xs mt-1 opacity-70">Team scheduling coming soon</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
