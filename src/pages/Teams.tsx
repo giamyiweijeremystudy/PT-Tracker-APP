@@ -166,9 +166,9 @@ export default function Teams() {
   // ── Has team ──────────────────────────────────────────────────────────────────
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'feed',    label: 'Activity Feed', icon: <Activity className="h-4 w-4 inline mr-1.5" /> },
-    { id: 'members', label: 'Members',       icon: <Users className="h-4 w-4 inline mr-1.5" /> },
-    ...(myRole === 'admin' ? [{ id: 'settings' as Tab, label: 'Settings', icon: <Settings className="h-4 w-4 inline mr-1.5" /> }] : []),
+    { id: 'feed',     label: 'Activity Feed', icon: <Activity className="h-4 w-4 inline mr-1.5" /> },
+    { id: 'members',  label: 'Members',       icon: <Users className="h-4 w-4 inline mr-1.5" /> },
+    { id: 'settings', label: 'Settings',      icon: <Settings className="h-4 w-4 inline mr-1.5" /> },
   ];
 
   return (
@@ -303,7 +303,7 @@ export default function Teams() {
       )}
 
       {/* Settings — admin only */}
-      {tab === 'settings' && myRole === 'admin' && (
+      {tab === 'settings' && (
         <div className="space-y-4">
 
           {/* Edit team info */}
