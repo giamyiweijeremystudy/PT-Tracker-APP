@@ -39,7 +39,7 @@ export type TeamActivity = {
   image_url: string | null;
   location: string | null;
   created_at: string;
-  profile?: { full_name: string; rank: string };
+  profile?: { full_name: string; rank: string; age: number|null; ippt_pushups: number|null; ippt_situps: number|null; ippt_run_seconds: number|null };
 };
 
 type TeamContextValue = {
