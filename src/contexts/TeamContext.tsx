@@ -65,13 +65,44 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ── Core fetch ──────────────────────────────────────────────────────────────
-  // Uses profiles.team_id as the single source of truth.
-  // If the profile has a team_id, the user is in a team — no ambiguity.
+  // ── Feed fetch ───────────────────────────────────────────────────────────────
+  // Queries team_activities (mirror table) joined with activities for full data.
+
+  const fetchFeed = useCallback(async (teamId: string, membersList: TeamMember[]) => {
+    const { data } = await supabase
+      .from('team_activities')
+      .select(`
+        activity_id,
+        user_id,
+        activities (
+          id, user_id, date, type, title, custom_type,
+          duration_minutes, distance_km, description,
+          image_url, location, created_at
+        )
+      `)
+      .eq('team_id', teamId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (data) {
+      const flat = data
+        .map((row: any) => {
+          const a = row.activities;
+          if (!a) return null;
+          return {
+            ...a,
+            profile: membersList.find(m => m.user_id === row.user_id)?.profile,
+          } as TeamActivity;
+        })
+        .filter(Boolean) as TeamActivity[];
+      setFeed(flat);
+    }
+  }, []);
+
+  // ── Core fetch ───────────────────────────────────────────────────────────────
 
   const fetchTeamData = useCallback(async (userId: string): Promise<void> => {
     try {
-      // Single query to profiles — tells us immediately if user is in a team
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('team_id')
@@ -81,32 +112,23 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (profileError) throw profileError;
 
       if (!profile?.team_id) {
-        setTeam(null);
-        setMyRole(null);
-        setMembers([]);
-        setFeed([]);
+        setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
         return;
       }
 
       const teamId = profile.team_id;
 
-      // Fetch team details + current user's role in parallel
       const [teamRes, memberRowRes] = await Promise.all([
         supabase.from('teams').select('*').eq('id', teamId).single(),
         supabase.from('team_members').select('role').eq('user_id', userId).eq('team_id', teamId).single(),
       ]);
 
       if (teamRes.error) throw teamRes.error;
-      if (!teamRes.data) {
-        // Team was deleted — clear profile reference
-        setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-        return;
-      }
+      if (!teamRes.data) { setTeam(null); setMyRole(null); setMembers([]); setFeed([]); return; }
 
       const teamData = teamRes.data as Team;
       const role = (memberRowRes.data?.role ?? 'member') as 'admin' | 'member';
 
-      // Fetch all members
       const { data: membersData } = await supabase
         .from('team_members')
         .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
@@ -120,29 +142,35 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       setMyRole(role);
       setMembers(membersList);
 
-      // Feed — best effort, won't block team state being set
-      if (membersList.length > 0) {
-        const ids = membersList.map(m => m.user_id);
-        const { data: activityData } = await supabase
-          .from('activities')
-          .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
-          .in('user_id', ids)
-          .order('created_at', { ascending: false })
-          .limit(50);
-        if (activityData) {
-          setFeed(activityData.map(a => ({
-            ...a,
-            profile: membersList.find(m => m.user_id === a.user_id)?.profile,
-          })) as TeamActivity[]);
-        }
-      }
+      await fetchFeed(teamId, membersList);
     } catch (err) {
       console.error('[TeamContext] fetchTeamData error:', err);
-      // Do not wipe state on error — leave whatever was there
     }
-  }, []);
+  }, [fetchFeed]);
 
-  // ── Auth ────────────────────────────────────────────────────────────────────
+  // ── Feed polling ─────────────────────────────────────────────────────────────
+  // Polls every 30s and on tab visibility (when user returns after posting
+  // a personal activity — it mirrors automatically via DB trigger).
+
+  useEffect(() => {
+    if (!team || members.length === 0) return;
+
+    const poll = () => fetchFeed(team.id, members);
+
+    const interval = setInterval(poll, 30_000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') poll();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [team, members, fetchFeed]);
+
+  // ── Auth ─────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     let ignore = false;
@@ -150,9 +178,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (ignore) return;
       try {
-        if (session?.user) {
-          await fetchTeamData(session.user.id);
-        }
+        if (session?.user) await fetchTeamData(session.user.id);
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -168,66 +194,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    return () => {
-      ignore = true;
-      subscription.unsubscribe();
-    };
+    return () => { ignore = true; subscription.unsubscribe(); };
   }, [fetchTeamData]);
 
-  // ── Feed polling ─────────────────────────────────────────────────────────────
-  // Polls every 30s and re-fetches on tab visibility change (when user returns
-  // after posting an activity in the personal Activities tab).
-
-  useEffect(() => {
-    if (members.length === 0) return;
-
-    const poll = async () => {
-      const ids = members.map(m => m.user_id);
-      const { data } = await supabase
-        .from('activities')
-        .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
-        .in('user_id', ids)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (data) {
-        setFeed(data.map(a => ({
-          ...a,
-          profile: members.find(m => m.user_id === a.user_id)?.profile,
-        })) as TeamActivity[]);
-      }
-    };
-
-    const interval = setInterval(poll, 30_000);
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') poll();
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [members]);
-
-  // ── Actions ─────────────────────────────────────────────────────────────────
+  // ── Actions ──────────────────────────────────────────────────────────────────
 
   const refreshFeed = useCallback(async () => {
-    if (members.length === 0) return;
-    const ids = members.map(m => m.user_id);
-    const { data } = await supabase
-      .from('activities')
-      .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
-      .in('user_id', ids)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (data) {
-      setFeed(data.map(a => ({
-        ...a,
-        profile: members.find(m => m.user_id === a.user_id)?.profile,
-      })) as TeamActivity[]);
-    }
-  }, [members]);
+    if (!team || members.length === 0) return;
+    await fetchFeed(team.id, members);
+  }, [team, members, fetchFeed]);
 
   const createTeam = async (name: string, description: string): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -245,7 +220,6 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .insert({ team_id: newTeam.id, user_id: userId, role: 'admin' });
     if (joinError) return joinError.message;
 
-    // profiles.team_id is updated by the DB trigger — fetch fresh state
     await fetchTeamData(userId);
     return null;
   };
@@ -263,7 +237,6 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .from('team_members').insert({ team_id: foundTeam.id, user_id: userId, role: 'member' });
     if (joinError) return joinError.message.includes('unique') ? 'You are already in a team' : joinError.message;
 
-    // profiles.team_id is updated by the DB trigger — fetch fresh state
     await fetchTeamData(userId);
     return null;
   };
@@ -272,7 +245,6 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     await supabase.from('team_members').delete().eq('user_id', session.user.id);
-    // Trigger will null out profiles.team_id
     setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
   };
 
@@ -287,7 +259,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     await supabase.from('team_members').delete().eq('user_id', userId).eq('team_id', team.id);
     const updated = members.filter(m => m.user_id !== userId);
     setMembers(updated);
-    if (updated.length > 0) await refreshFeed();
+    if (updated.length > 0) await fetchFeed(team.id, updated);
     else setFeed([]);
   };
 
