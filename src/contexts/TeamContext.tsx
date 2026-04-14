@@ -66,18 +66,21 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // ── Core fetch ──────────────────────────────────────────────────────────────
+  // Uses profiles.team_id as the single source of truth.
+  // If the profile has a team_id, the user is in a team — no ambiguity.
 
   const fetchTeamData = useCallback(async (userId: string): Promise<void> => {
     try {
-      const { data: memberRow, error: memberError } = await supabase
-        .from('team_members')
-        .select('*, team:teams(*)')
-        .eq('user_id', userId)
-        .maybeSingle();
+      // Single query to profiles — tells us immediately if user is in a team
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('team_id')
+        .eq('id', userId)
+        .single();
 
-      if (memberError) throw memberError;
+      if (profileError) throw profileError;
 
-      if (!memberRow) {
+      if (!profile?.team_id) {
         setTeam(null);
         setMyRole(null);
         setMembers([]);
@@ -85,26 +88,39 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const teamData = memberRow.team as unknown as Team;
-      const role = memberRow.role as 'admin' | 'member';
+      const teamId = profile.team_id;
 
-      const { data: membersData, error: membersError } = await supabase
+      // Fetch team details + current user's role in parallel
+      const [teamRes, memberRowRes] = await Promise.all([
+        supabase.from('teams').select('*').eq('id', teamId).single(),
+        supabase.from('team_members').select('role').eq('user_id', userId).eq('team_id', teamId).single(),
+      ]);
+
+      if (teamRes.error) throw teamRes.error;
+      if (!teamRes.data) {
+        // Team was deleted — clear profile reference
+        setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
+        return;
+      }
+
+      const teamData = teamRes.data as Team;
+      const role = (memberRowRes.data?.role ?? 'member') as 'admin' | 'member';
+
+      // Fetch all members
+      const { data: membersData } = await supabase
         .from('team_members')
         .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
-        .eq('team_id', teamData.id)
+        .eq('team_id', teamId)
         .order('role', { ascending: true })
         .order('joined_at', { ascending: true });
 
-      if (membersError) throw membersError;
-
       const membersList = (membersData ?? []) as unknown as TeamMember[];
 
-      // Set team state first — this is what switches the UI from "join" to "team" view
       setTeam(teamData);
       setMyRole(role);
       setMembers(membersList);
 
-      // Feed is best-effort — don't let it block or break the above
+      // Feed — best effort, won't block team state being set
       if (membersList.length > 0) {
         const ids = membersList.map(m => m.user_id);
         const { data: activityData } = await supabase
@@ -121,8 +137,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (err) {
-      // Don't wipe team state on error — leave whatever was there
       console.error('[TeamContext] fetchTeamData error:', err);
+      // Do not wipe state on error — leave whatever was there
     }
   }, []);
 
@@ -193,14 +209,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .insert({ team_id: newTeam.id, user_id: userId, role: 'admin' });
     if (joinError) return joinError.message;
 
-    // Immediately set team state so UI transitions without waiting for full fetch
-    setTeam(newTeam as Team);
-    setMyRole('admin');
-    setMembers([]);
-    setFeed([]);
-
-    // Then fetch full member list in background
-    fetchTeamData(userId);
+    // profiles.team_id is updated by the DB trigger — fetch fresh state
+    await fetchTeamData(userId);
     return null;
   };
 
@@ -217,14 +227,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .from('team_members').insert({ team_id: foundTeam.id, user_id: userId, role: 'member' });
     if (joinError) return joinError.message.includes('unique') ? 'You are already in a team' : joinError.message;
 
-    // Immediately set team state so UI transitions without waiting for full fetch
-    setTeam(foundTeam as Team);
-    setMyRole('member');
-    setMembers([]);
-    setFeed([]);
-
-    // Then fetch full member list in background
-    fetchTeamData(userId);
+    // profiles.team_id is updated by the DB trigger — fetch fresh state
+    await fetchTeamData(userId);
     return null;
   };
 
@@ -232,6 +236,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     await supabase.from('team_members').delete().eq('user_id', session.user.id);
+    // Trigger will null out profiles.team_id
     setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
   };
 
