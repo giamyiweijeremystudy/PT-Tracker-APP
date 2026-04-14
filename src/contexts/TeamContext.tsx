@@ -140,39 +140,37 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   };
 
   // Called silently in background when cache exists
-  const syncFromSupabase = async (userId: string, currentMembers: TeamMember[]) => {
-    const { data: memberRow, error } = await supabase
+const syncFromSupabase = async (userId: string, currentMembers: TeamMember[]) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+
+  const { data: memberRow } = await supabase
     .from('team_members')
     .select('*, team:teams(*)')
     .eq('user_id', userId)
     .maybeSingle();
 
-console.log('[TeamContext] sync result:', { memberRow, error, userId });
+  if (!memberRow) {
+    persist(null, null, []);
+    clearCache(userId);
+    setFeed([]);
+    return;
+  }
 
-console.log('[TeamContext] sync result:', { memberRow, error, userId });
+  const teamData = memberRow.team as unknown as Team;
+  const role = memberRow.role as 'admin' | 'member';
 
-    if (!memberRow) {
-      // User was removed from team externally
-      persist(null, null, []);
-      clearCache(userId);
-      setFeed([]);
-      return;
-    }
+  const { data: membersData } = await supabase
+    .from('team_members')
+    .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
+    .eq('team_id', teamData.id)
+    .order('role', { ascending: true })
+    .order('joined_at', { ascending: true });
 
-    const teamData = memberRow.team as unknown as Team;
-    const role = memberRow.role as 'admin' | 'member';
-
-    const { data: membersData } = await supabase
-      .from('team_members')
-      .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
-      .eq('team_id', teamData.id)
-      .order('role', { ascending: true })
-      .order('joined_at', { ascending: true });
-
-    const membersList = (membersData ?? []) as unknown as TeamMember[];
-    persist(teamData, role, membersList);
-    await fetchFeed(membersList);
-  };
+  const membersList = (membersData ?? []) as unknown as TeamMember[];
+  persist(teamData, role, membersList);
+  await fetchFeed(membersList);
+};
 
   // Called when no cache exists
   const loadFresh = async (userId: string) => {
