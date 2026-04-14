@@ -98,7 +98,6 @@ export const INTENTS: Intent[] = [
     name: 'IPPT Score',
     keywords: [
       ['ippt', 'score', 'result', 'award', 'gold', 'silver', 'pass', 'fail', 'points', 'pts'],
-      ['my', 'check', 'see', 'view', 'what', 'how'],
     ],
     response: "Here's what I can do with your IPPT data:",
     actions: [
@@ -143,8 +142,7 @@ export const INTENTS: Intent[] = [
     id: 'my_stats',
     name: 'My Stats',
     keywords: [
-      ['my', 'profile', 'stats', 'statistics', 'progress', 'overview', 'dashboard'],
-      ['score', 'result', 'bmi', 'weight', 'height', 'fitness', 'performance'],
+      ['stats', 'statistics', 'progress', 'overview', 'profile', 'dashboard', 'fitness', 'performance'],
     ],
     response: "Here's how to access your stats:",
     actions: [
@@ -216,8 +214,8 @@ export const INTENTS: Intent[] = [
     id: 'at_risk',
     name: 'At-Risk Members',
     keywords: [
-      ['at-risk', 'risk', 'fail', 'failing', 'struggling', 'poor', 'weak', 'inactive', 'no activity'],
-      ['member', 'members', 'team', 'who', 'which'],
+      ['at-risk', 'risk', 'failing', 'struggling', 'inactive'],
+      ['member', 'members', 'team'],
     ],
     response: "I can check which team members may need attention:",
     actions: [
@@ -259,24 +257,33 @@ export const INTENTS: Intent[] = [
 // ─── Matching engine ──────────────────────────────────────────────────────────
 export function matchIntent(input: string): { intent: Intent; score: number } | null {
   const tokens = input.toLowerCase().replace(/[^a-z0-9\s-]/g, '').split(/\s+/);
-  const MIN_SCORE = 1;
 
   let best: { intent: Intent; score: number } | null = null;
 
   for (const intent of INTENTS) {
-    let score = 0;
-    for (const group of intent.keywords) {
-      // A group contributes 1 point if ANY token in that group appears in the input
-      const hit = group.some(kw => tokens.some(t => t.includes(kw) || kw.includes(t)));
-      if (hit) score++;
+    // The FIRST keyword group is the PRIMARY group — it MUST have a match.
+    // Without a primary hit, the intent is disqualified entirely.
+    const primaryGroup = intent.keywords[0];
+    const primaryHit = primaryGroup.some(kw =>
+      tokens.some(t => t === kw || t.includes(kw) || kw.includes(t) && kw.length > 3)
+    );
+    if (!primaryHit) continue;
+
+    // Base score = number of unique primary keywords matched (rewards specificity)
+    let score = primaryGroup.filter(kw =>
+      tokens.some(t => t === kw || t.includes(kw))
+    ).length;
+
+    // Secondary groups give bonus points (but cannot save a failed primary)
+    for (let i = 1; i < intent.keywords.length; i++) {
+      const group = intent.keywords[i];
+      const hit = group.some(kw =>
+        tokens.some(t => t === kw || (t.includes(kw) && kw.length > 3))
+      );
+      if (hit) score += 0.5;
     }
-    // Bonus: full keyword exact match
-    for (const group of intent.keywords) {
-      for (const kw of group) {
-        if (tokens.includes(kw)) score += 0.5;
-      }
-    }
-    if (score >= MIN_SCORE && (!best || score > best.score)) {
+
+    if (!best || score > best.score) {
       best = { intent, score };
     }
   }
