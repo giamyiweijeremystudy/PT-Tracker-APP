@@ -509,9 +509,12 @@ export default function Activities() {
       const path = imageUrl.split('/activity-images/')[1];
       if (path) await supabase.storage.from('activity-images').remove([path]);
     }
+    // Remove from team feed first, then delete the activity
+    await supabase.from('team_activities').delete().eq('activity_id', id);
     const { error } = await supabase.from('activities').delete().eq('id', id);
     setDeleting(null);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    await refreshFeed();
     toast({ title: 'Deleted' });
     fetchActivities();
   };
