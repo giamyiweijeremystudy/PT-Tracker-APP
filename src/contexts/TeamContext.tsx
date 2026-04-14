@@ -14,7 +14,7 @@ export type TeamMember = {
   team_id: string;
   user_id: string;
   role: 'admin' | 'member';
-  team_role: 'admin' | 'pt_ic' | 'spartan' | 'member';
+  team_role: string[];
   joined_at: string;
   profile?: {
     full_name: string;
@@ -47,8 +47,8 @@ type TeamContextValue = {
   members: TeamMember[];
   feed: TeamActivity[];
   myRole: 'admin' | 'member' | null;
-  myTeamRole: 'admin' | 'pt_ic' | 'spartan' | 'member' | null;
-  updateMemberRole: (userId: string, teamRole: 'admin' | 'pt_ic' | 'spartan' | 'member') => Promise<void>;
+  myTeamRole: string[];
+  updateMemberRole: (userId: string, teamRoles: string[]) => Promise<void>;
   loading: boolean;
   createTeam: (name: string, description: string) => Promise<string | null>;
   joinTeam: (code: string) => Promise<string | null>;
@@ -66,7 +66,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [feed, setFeed]       = useState<TeamActivity[]>([]);
   const [myRole, setMyRole]       = useState<'admin' | 'member' | null>(null);
-  const [myTeamRole, setMyTeamRole] = useState<'admin' | 'pt_ic' | 'spartan' | 'member' | null>(null);
+  const [myTeamRole, setMyTeamRole] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // ── Feed fetch ───────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (profileError) throw profileError;
 
       if (!profile?.team_id) {
-        setTeam(null); setMyRole(null); setMyTeamRole(null); setMembers([]); setFeed([]);
+        setTeam(null); setMyRole(null); setMyTeamRole([]); setMembers([]); setFeed([]);
         return;
       }
 
@@ -164,7 +164,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const myMember = membersList.find(m => m.user_id === userId);
       setTeam(teamData);
       setMyRole(role);
-      setMyTeamRole((myMember?.team_role ?? 'member') as 'admin' | 'pt_ic' | 'spartan' | 'member');
+      setMyTeamRole(Array.isArray(myMember?.team_role) ? myMember.team_role : ['member']);
       setMembers(membersList);
 
       await fetchFeed(teamId, membersList);
@@ -213,7 +213,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       async (event, _session) => {
         if (ignore) return;
         if (event === 'SIGNED_OUT') {
-          setTeam(null); setMyRole(null); setMyTeamRole(null); setMembers([]); setFeed([]);
+          setTeam(null); setMyRole(null); setMyTeamRole([]); setMembers([]); setFeed([]);
           setLoading(false);
         }
       }
@@ -275,7 +275,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     if (!session) return;
     await supabase.from('team_members').delete().eq('user_id', session.user.id);
     await supabase.from('profiles').update({ team_id: null }).eq('id', session.user.id);
-    setTeam(null); setMyRole(null); setMyTeamRole(null); setMembers([]); setFeed([]);
+    setTeam(null); setMyRole(null); setMyTeamRole([]); setMembers([]); setFeed([]);
   };
 
   const deleteTeam = async () => {
@@ -286,7 +286,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       await supabase.from('profiles').update({ team_id: null }).in('id', memberIds);
     }
     await supabase.from('teams').delete().eq('id', team.id);
-    setTeam(null); setMyRole(null); setMyTeamRole(null); setMembers([]); setFeed([]);
+    setTeam(null); setMyRole(null); setMyTeamRole([]); setMembers([]); setFeed([]);
   };
 
   const removeMember = async (userId: string) => {
@@ -305,19 +305,23 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   };
 
 
-  const updateMemberRole = async (userId: string, teamRole: 'admin' | 'pt_ic' | 'spartan' | 'member') => {
+  const updateMemberRole = async (userId: string, teamRoles: string[]) => {
     if (!team) return;
-    // Enforce only 1 PT IC — demote any existing PT IC first
-    if (teamRole === 'pt_ic') {
-      await supabase
-        .from('team_members')
-        .update({ team_role: 'member' })
-        .eq('team_id', team.id)
-        .eq('team_role', 'pt_ic');
+    // Enforce only 1 PT IC — remove pt_ic from any existing holder first
+    if (teamRoles.includes('pt_ic')) {
+      const existing = members.find(m => m.user_id !== userId && Array.isArray(m.team_role) && m.team_role.includes('pt_ic'));
+      if (existing) {
+        const stripped = (existing.team_role as string[]).filter(r => r !== 'pt_ic');
+        await supabase
+          .from('team_members')
+          .update({ team_role: stripped.length ? stripped : ['member'] })
+          .eq('team_id', team.id)
+          .eq('user_id', existing.user_id);
+      }
     }
     await supabase
       .from('team_members')
-      .update({ team_role: teamRole })
+      .update({ team_role: teamRoles.length ? teamRoles : ['member'] })
       .eq('team_id', team.id)
       .eq('user_id', userId);
     // Refresh members
