@@ -141,11 +141,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   // Called silently in background when cache exists
   const syncFromSupabase = async (userId: string, currentMembers: TeamMember[]) => {
-    const { data: memberRow } = await supabase
-      .from('team_members')
-      .select('*, team:teams(*)')
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data: memberRow, error } = await supabase
+    .from('team_members')
+    .select('*, team:teams(*)')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+console.log('[TeamContext] sync result:', { memberRow, error, userId });
+
+console.log('[TeamContext] sync result:', { memberRow, error, userId });
 
     if (!memberRow) {
       // User was removed from team externally
