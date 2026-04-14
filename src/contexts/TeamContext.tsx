@@ -59,23 +59,70 @@ type TeamContextValue = {
 
 const TeamContext = createContext<TeamContextValue | null>(null);
 
+function cacheKey(userId: string) { return `team_state_${userId}`; }
+
+function saveCache(userId: string, team: Team | null, myRole: 'admin' | 'member' | null, members: TeamMember[]) {
+  try {
+    localStorage.setItem(cacheKey(userId), JSON.stringify({ team, myRole, members }));
+  } catch {}
+}
+
+function loadCache(userId: string): { team: Team | null; myRole: 'admin' | 'member' | null; members: TeamMember[] } | null {
+  try {
+    const raw = localStorage.getItem(cacheKey(userId));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function clearCache(userId: string) {
+  try { localStorage.removeItem(cacheKey(userId)); } catch {}
+}
+
 export function TeamProvider({ children }: { children: ReactNode }) {
   const { user, profile } = useAuth();
 
-  const [team, setTeam]       = useState<Team | null>(null);
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [feed, setFeed]       = useState<TeamActivity[]>([]);
-  const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loaded, setLoaded]   = useState(false);
+  const [team, setTeamState]       = useState<Team | null>(null);
+  const [members, setMembersState] = useState<TeamMember[]>([]);
+  const [feed, setFeed]            = useState<TeamActivity[]>([]);
+  const [myRole, setMyRoleState]   = useState<'admin' | 'member' | null>(null);
+  const [loading, setLoading]      = useState(true);
+
+  // Wrap setters to also update cache
+  const setTeam = (t: Team | null) => {
+    setTeamState(t);
+    if (user) saveCache(user.id, t, myRole, members);
+  };
+  const setMembers = (m: TeamMember[]) => {
+    setMembersState(m);
+    if (user) saveCache(user.id, team, myRole, m);
+  };
+  const setMyRole = (r: 'admin' | 'member' | null) => {
+    setMyRoleState(r);
+    if (user) saveCache(user.id, team, r, members);
+  };
 
   useEffect(() => {
-    if (!user || loaded) return;
-    loadOnce();
-  }, [user]);
+    if (!user) { setLoading(false); return; }
+
+    // Load from cache immediately — no flicker, no waiting
+    const cached = loadCache(user.id);
+    if (cached) {
+      setTeamState(cached.team);
+      setMyRoleState(cached.myRole);
+      setMembersState(cached.members);
+      setLoading(false);
+      // Still refresh from Supabase in background to stay in sync
+      loadFromSupabase(user.id, true);
+      return;
+    }
+
+    // No cache — load fresh
+    loadFromSupabase(user.id, false);
+  }, [user?.id]);
 
   const loadFeed = async (membersList: TeamMember[]) => {
-    if (membersList.length === 0) return;
+    if (membersList.length === 0) { setFeed([]); return; }
     const memberIds = membersList.map(m => m.user_id);
     const { data } = await supabase
       .from('activities')
@@ -91,27 +138,24 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const refreshFeed = useCallback(async () => {
-    await loadFeed(members);
-  }, [members]);
+  const loadFromSupabase = async (userId: string, silent: boolean) => {
+    if (!silent) setLoading(true);
 
-  const loadOnce = async () => {
-    setLoading(true);
     const { data: memberRow } = await supabase
       .from('team_members')
       .select('*, team:teams(*)')
-      .eq('user_id', user!.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (!memberRow) {
-      setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
-      setLoading(false); setLoaded(true); return;
+      setTeamState(null); setMyRoleState(null); setMembersState([]); setFeed([]);
+      clearCache(userId);
+      setLoading(false);
+      return;
     }
 
     const teamData = memberRow.team as unknown as Team;
     const role = memberRow.role as 'admin' | 'member';
-    setTeam(teamData);
-    setMyRole(role);
 
     const { data: membersData } = await supabase
       .from('team_members')
@@ -121,12 +165,19 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .order('joined_at', { ascending: true });
 
     const membersList = (membersData ?? []) as unknown as TeamMember[];
-    setMembers(membersList);
-    await loadFeed(membersList);
 
+    setTeamState(teamData);
+    setMyRoleState(role);
+    setMembersState(membersList);
+    saveCache(userId, teamData, role, membersList);
+
+    await loadFeed(membersList);
     setLoading(false);
-    setLoaded(true);
   };
+
+  const refreshFeed = useCallback(async () => {
+    await loadFeed(members);
+  }, [members]);
 
   const createTeam = async (name: string, description: string): Promise<string | null> => {
     if (!user) return 'Not logged in';
@@ -151,10 +202,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         ippt_run_seconds: (profile as any)?.ippt_run_seconds ?? null,
       },
     };
-    setTeam(newTeam as Team);
-    setMyRole('admin');
-    setMembers([myMember]);
+    const newMembers = [myMember];
+    setTeamState(newTeam as Team);
+    setMyRoleState('admin');
+    setMembersState(newMembers);
     setFeed([]);
+    saveCache(user.id, newTeam as Team, 'admin', newMembers);
     return null;
   };
 
@@ -166,14 +219,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     const { error: joinError } = await supabase
       .from('team_members').insert({ team_id: foundTeam.id, user_id: user.id, role: 'member' });
     if (joinError) return joinError.message.includes('unique') ? 'You are already in a team' : joinError.message;
-    setTeam(foundTeam as Team);
-    setMyRole('member');
     const { data: membersData } = await supabase
       .from('team_members')
       .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
       .eq('team_id', foundTeam.id);
     const membersList = (membersData ?? []) as unknown as TeamMember[];
-    setMembers(membersList);
+    setTeamState(foundTeam as Team);
+    setMyRoleState('member');
+    setMembersState(membersList);
+    saveCache(user.id, foundTeam as Team, 'member', membersList);
     await loadFeed(membersList);
     return null;
   };
@@ -181,27 +235,32 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const leaveTeam = async () => {
     if (!user) return;
     await supabase.from('team_members').delete().eq('user_id', user.id);
-    setTeam(null); setMembers([]); setFeed([]); setMyRole(null);
+    clearCache(user.id);
+    setTeamState(null); setMembersState([]); setFeed([]); setMyRoleState(null);
   };
 
   const deleteTeam = async () => {
-    if (!team) return;
+    if (!team || !user) return;
     await supabase.from('teams').delete().eq('id', team.id);
-    setTeam(null); setMembers([]); setFeed([]); setMyRole(null);
+    clearCache(user.id);
+    setTeamState(null); setMembersState([]); setFeed([]); setMyRoleState(null);
   };
 
   const removeMember = async (userId: string) => {
-    if (!team) return;
+    if (!team || !user) return;
     await supabase.from('team_members').delete().eq('user_id', userId).eq('team_id', team.id);
     const updated = members.filter(m => m.user_id !== userId);
-    setMembers(updated);
+    setMembersState(updated);
+    saveCache(user.id, team, myRole, updated);
     await loadFeed(updated);
   };
 
   const updateTeam = async (name: string, description: string) => {
-    if (!team) return;
+    if (!team || !user) return;
     await supabase.from('teams').update({ name: name.trim(), description: description.trim() }).eq('id', team.id);
-    setTeam(t => t ? { ...t, name: name.trim(), description: description.trim() } : t);
+    const updated = { ...team, name: name.trim(), description: description.trim() };
+    setTeamState(updated);
+    saveCache(user.id, updated, myRole, members);
   };
 
   return (
