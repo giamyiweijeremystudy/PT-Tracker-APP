@@ -528,7 +528,7 @@ export default function Teams() {
             // What roles can the current user assign to this member?
             const assignableRoles: string[] = (() => {
               if (isMe) return [];
-              if (canAssignPTIC) return ['admin', 'pt_ic', 'spartan']; // admin can toggle admin/pt_ic/spartan
+              if (canAssignPTIC) return ['pt_ic', 'spartan']; // admin role is permanent, cannot be toggled
               if (hasRole(myTeamRole, 'pt_ic')) return ['spartan'];     // PT IC can only toggle spartan
               return [];
             })();
