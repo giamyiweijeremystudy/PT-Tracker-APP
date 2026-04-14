@@ -439,14 +439,26 @@ export default function Activities() {
     setSaving(false);
     if (error || !newActivity) { toast({ title: 'Error', description: error?.message, variant: 'destructive' }); return; }
 
-    // Mirror to team feed if user belongs to a team
-    if (team && user) {
-      await supabase.from('team_activities').insert({
-        activity_id: newActivity.id,
-        team_id: team.id,
-        user_id: user.id,
-      });
-      await refreshFeed();
+    // Mirror to team feed — use context team if available, otherwise look up directly
+    if (user) {
+      let teamId = team?.id ?? null;
+      if (!teamId) {
+        const { data: membership } = await supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+        teamId = membership?.team_id ?? null;
+      }
+      if (teamId) {
+        await supabase.from('team_activities').insert({
+          activity_id: newActivity.id,
+          team_id: teamId,
+          user_id: user.id,
+        });
+        await refreshFeed();
+      }
     }
 
     toast({ title: 'Activity posted!' });
