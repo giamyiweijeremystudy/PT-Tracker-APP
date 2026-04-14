@@ -15,6 +15,15 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Calendar, Plus, Trash2, Users, User, AlertCircle, X } from 'lucide-react';
 
+// ─── Local date helper (respects device timezone, e.g. UTC+8) ─────────────────
+function localDateStr(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+
 // ─── Singapore Public Holidays ────────────────────────────────────────────────
 const SG_HOLIDAYS: Record<string, string> = {
   '2025-01-01':"New Year's Day",'2025-01-29':'Chinese New Year','2025-01-30':'Chinese New Year',
@@ -60,7 +69,7 @@ export default function Schedule() {
   const { toast } = useToast();
 
   const today      = new Date();
-  const todayStr   = today.toISOString().split('T')[0];
+  const todayStr   = localDateStr(today);
 
   const [events, setEvents]         = useState<PersonalEvent[]>([]);
   const [calYear, setCalYear]       = useState(today.getFullYear());
@@ -131,7 +140,7 @@ export default function Schedule() {
 
   // Upcoming events (next 30 days)
   const upcomingEnd = new Date(today); upcomingEnd.setDate(upcomingEnd.getDate() + 30);
-  const upcomingEndStr = upcomingEnd.toISOString().split('T')[0];
+  const upcomingEndStr = localDateStr(upcomingEnd);
   const upcomingEvents = events.filter(e => e.event_date >= todayStr && e.event_date <= upcomingEndStr)
     .sort((a, b) => a.event_date.localeCompare(b.event_date));
 
