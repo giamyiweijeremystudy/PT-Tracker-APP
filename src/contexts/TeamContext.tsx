@@ -242,7 +242,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
     const { error: joinError } = await supabase
       .from('team_members')
-      .insert({ team_id: newTeam.id, user_id: userId, role: 'admin', team_role: 'admin' });
+      .insert({ team_id: newTeam.id, user_id: userId, role: 'admin', team_role: ['admin'] });
     if (joinError) return joinError.message;
 
     await supabase.from('profiles').update({ team_id: newTeam.id }).eq('id', userId);
@@ -261,7 +261,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     if (error || !foundTeam) return 'Invalid invite code';
 
     const { error: joinError } = await supabase
-      .from('team_members').insert({ team_id: foundTeam.id, user_id: userId, role: 'member' });
+      .from('team_members').insert({ team_id: foundTeam.id, user_id: userId, role: 'member', team_role: ['member'] });
     if (joinError) return joinError.message.includes('unique') ? 'You are already in a team' : joinError.message;
 
     await supabase.from('profiles').update({ team_id: foundTeam.id }).eq('id', userId);
