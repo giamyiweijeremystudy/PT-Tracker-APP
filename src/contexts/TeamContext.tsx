@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -92,6 +92,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [feed, setFeed]        = useState<TeamActivity[]>([]);
   const [myRole, _setMyRole]   = useState<'admin' | 'member' | null>(null);
   const [loading, setLoading]  = useState(true);
+  const initializedForUser = useRef<string | null>(null);
 
   // Helpers that keep cache in sync
   const persist = (t: Team | null, r: 'admin'|'member'|null, m: TeamMember[]) => {
@@ -101,6 +102,9 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
+    // Prevent running twice for the same user (auth fires onAuthStateChange + getSession)
+    if (initializedForUser.current === user.id) return;
+    initializedForUser.current = user.id;
 
     // 1. Apply cache immediately so UI never shows join screen on refresh
     const cached = getCache(user.id);
