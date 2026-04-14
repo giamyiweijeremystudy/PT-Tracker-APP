@@ -85,6 +85,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .limit(50);
 
     if (data) {
+      const seen = new Set<string>();
       const flat = data
         .map((row: any) => {
           const a = row.activities;
@@ -94,7 +95,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
             profile: membersList.find(m => m.user_id === row.user_id)?.profile,
           } as TeamActivity;
         })
-        .filter(Boolean) as TeamActivity[];
+        .filter(Boolean)
+        .filter((a: any) => {
+          if (seen.has(a.id)) return false;
+          seen.add(a.id);
+          return true;
+        }) as TeamActivity[];
       setFeed(flat);
     }
   }, []);
