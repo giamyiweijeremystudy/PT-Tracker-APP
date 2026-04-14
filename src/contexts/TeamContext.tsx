@@ -129,14 +129,27 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const teamData = teamRes.data as Team;
       const role = (memberRowRes.data?.role ?? 'member') as 'admin' | 'member';
 
-      const { data: membersData } = await supabase
+      // Fetch members and profiles in two separate queries to avoid RLS join issues
+      const { data: membersRaw } = await supabase
         .from('team_members')
-        .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
+        .select('id, team_id, user_id, role, joined_at')
         .eq('team_id', teamId)
         .order('role', { ascending: true })
         .order('joined_at', { ascending: true });
 
-      const membersList = (membersData ?? []) as unknown as TeamMember[];
+      const memberUserIds = (membersRaw ?? []).map((m: any) => m.user_id);
+      const { data: profilesRaw } = memberUserIds.length > 0
+        ? await supabase
+            .from('profiles')
+            .select('id, full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds')
+            .in('id', memberUserIds)
+        : { data: [] };
+
+      const profileMap = Object.fromEntries((profilesRaw ?? []).map((p: any) => [p.id, p]));
+      const membersList: TeamMember[] = (membersRaw ?? []).map((m: any) => ({
+        ...m,
+        profile: profileMap[m.user_id] ?? undefined,
+      }));
 
       setTeam(teamData);
       setMyRole(role);
