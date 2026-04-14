@@ -15,6 +15,7 @@ import Calculators from "./pages/Calculators";
 import Activities from "./pages/Activities";
 import Teams from "./pages/Teams";
 import PTSettings from "./pages/PTSettings";
+import Schedule from "./pages/Schedule";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/activities"       element={<P><Activities /></P>} />
             <Route path="/teams"            element={<P><Teams /></P>} />
             <Route path="/settings"         element={<P><PTSettings /></P>} />
+            <Route path="/schedule"         element={<P><Schedule /></P>} />
             <Route path="*"                 element={<NotFound />} />
           </Routes>
         </TeamProvider>
