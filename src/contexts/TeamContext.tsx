@@ -174,29 +174,40 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     };
   }, [fetchTeamData]);
 
-  // ── Realtime feed subscription ───────────────────────────────────────────────
-  // Prepends new activities from team members to the feed live.
+  // ── Feed polling ─────────────────────────────────────────────────────────────
+  // Polls every 30s and re-fetches on tab visibility change (when user returns
+  // after posting an activity in the personal Activities tab).
 
   useEffect(() => {
     if (members.length === 0) return;
 
-    const memberIds = members.map(m => m.user_id);
+    const poll = async () => {
+      const ids = members.map(m => m.user_id);
+      const { data } = await supabase
+        .from('activities')
+        .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
+        .in('user_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (data) {
+        setFeed(data.map(a => ({
+          ...a,
+          profile: members.find(m => m.user_id === a.user_id)?.profile,
+        })) as TeamActivity[]);
+      }
+    };
 
-    const channel = supabase
-      .channel('team-activities')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'activities' },
-        (payload) => {
-          const newActivity = payload.new as TeamActivity;
-          if (!memberIds.includes(newActivity.user_id)) return;
-          const profile = members.find(m => m.user_id === newActivity.user_id)?.profile;
-          setFeed(prev => [{ ...newActivity, profile }, ...prev].slice(0, 50));
-        }
-      )
-      .subscribe();
+    const interval = setInterval(poll, 30_000);
 
-    return () => { supabase.removeChannel(channel); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') poll();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [members]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
