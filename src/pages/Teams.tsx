@@ -26,6 +26,15 @@ import {
   BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon, Download, FileText, Users2, Trophy, Medal,
 } from 'lucide-react';
 
+// ─── Local date helper (respects device timezone, e.g. UTC+8) ─────────────────
+function localDateStr(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
 
 const PUSHUP_RAW = [[60,25,"","","","","","","","","","","","",""],[59,24,25,"","","","","","","","","","","",""],[58,24,24,25,"","","","","","","","","","",""],[57,24,24,24,25,"","","","","","","","","",""],[56,24,24,24,24,25,"","","","","","","","",""],[55,23,24,24,24,24,25,"","","","","","","",""],[54,23,23,24,24,24,24,25,"","","","","","",""],[53,23,23,23,24,24,24,24,25,"","","","","",""],[52,23,23,23,23,24,24,24,24,"","","","","",""],[51,22,23,23,23,23,24,24,24,25,"","","","",""],[50,22,22,23,23,23,23,24,24,24,"","","","",""],[49,22,22,22,23,23,23,23,24,24,25,"","","",""],[48,22,22,22,22,23,23,23,23,24,24,"","","",""],[47,21,22,22,22,22,23,23,23,24,24,25,"","",""],[46,21,21,22,22,22,22,23,23,23,24,24,"","",""],[45,21,21,21,22,22,22,22,23,23,24,24,25,"",""],[44,21,21,21,21,22,22,22,22,23,23,24,24,"",""],[43,20,21,21,21,21,22,22,22,23,23,24,24,25,""],[42,20,20,21,21,21,21,22,22,22,23,23,24,25,""],[41,20,20,20,21,21,21,21,22,22,23,23,24,24,25],[40,20,20,20,20,21,21,21,21,22,22,23,23,24,25],[39,19,20,20,20,20,21,21,21,22,22,23,23,24,24],[38,19,19,20,20,20,20,21,21,21,22,22,23,23,24],[37,19,19,19,20,20,20,20,21,21,22,22,22,23,24],[36,18,19,19,19,20,20,20,20,21,21,22,22,23,23],[35,18,18,19,19,19,20,20,20,21,21,21,22,22,23],[34,18,18,18,19,19,19,20,20,20,21,21,21,22,23],[33,17,18,18,18,19,19,19,20,20,20,21,21,22,22],[32,17,17,18,18,18,19,19,19,20,20,20,21,21,22],[31,17,17,17,18,18,18,19,19,19,20,20,20,21,22],[30,16,17,17,17,18,18,18,19,19,19,20,20,21,21],[29,16,16,17,17,17,18,18,18,19,19,19,20,20,21],[28,16,16,16,17,17,17,18,18,18,19,19,19,20,20],[27,15,16,16,16,17,17,17,18,18,18,19,19,19,20],[26,15,15,16,16,16,17,17,17,18,18,18,19,19,19],[25,14,15,15,16,16,16,17,17,17,18,18,18,19,19],[24,13,14,15,15,16,16,16,17,17,17,18,18,18,19],[23,12,13,14,15,15,16,16,16,17,17,17,18,18,18],[22,11,12,13,14,15,15,16,16,16,17,17,17,18,18],[21,10,11,12,13,14,15,15,16,16,16,17,17,17,18],[20,9,10,11,12,13,14,15,15,16,16,16,17,17,17],[19,8,9,10,11,12,13,14,15,15,16,16,16,17,17],[18,6,8,9,10,11,12,13,14,15,15,16,16,16,17],[17,4,6,8,9,10,11,12,13,14,15,15,16,16,16],[16,2,4,6,8,9,10,11,12,13,14,15,15,16,16],[15,1,2,4,6,8,9,10,11,12,13,14,15,15,16],[14,0,1,2,4,6,8,9,10,11,12,13,14,15,15]];
@@ -276,7 +285,7 @@ export default function Teams() {
 
   // Submissions
   const [submissions, setSubmissions]       = useState<TeamSubmission[]>([]);
-  const [subDate, setSubDate]               = useState(today.toISOString().split('T')[0]);
+  const [subDate, setSubDate]               = useState(localDateStr(today));
   const [subEventId, setSubEventId]         = useState<string>('none');
   const [subAttendance, setSubAttendance]   = useState<string>('Participating');
   const [sftType, setSftType]               = useState<string>('Running');
@@ -356,7 +365,7 @@ export default function Teams() {
       const evts = data as TeamEvent[];
       setEvents(evts);
       // Auto-select today's event in submissions
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = localDateStr();
       const todayEvt = evts.find(e => e.event_date === todayStr);
       if (todayEvt) setSubEventId(todayEvt.id);
     }
@@ -377,7 +386,7 @@ export default function Teams() {
 
   const fetchPosts = useCallback(async () => {
     if (!team) return;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateStr();
     const { data: postsData } = await supabase
       .from('team_bulletins').select('*').eq('team_id', team.id)
       .order('is_pinned', { ascending: false })
@@ -877,7 +886,7 @@ export default function Teams() {
 
       {/* ── Activities ── */}
       {tab === 'activities' && (() => {
-        const todayStr = today.toISOString().split('T')[0];
+        const todayStr = localDateStr(today);
         const pinnedEvents = events.filter(e => e.is_important && e.event_date >= todayStr)
           .sort((a, b) => a.event_date.localeCompare(b.event_date));
         const pinnedPosts = posts.filter(p => p.is_pinned);
@@ -1298,7 +1307,7 @@ export default function Teams() {
         return (
           <div className="space-y-4">
             {/* Important pinned events */}
-            {events.filter(e => e.is_important && e.event_date >= today.toISOString().split('T')[0]).slice(0,3).map(e => (
+            {events.filter(e => e.is_important && e.event_date >= localDateStr(today)).slice(0,3).map(e => (
               <div key={e.id} className="flex items-start gap-2 rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3">
                 <Pin className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -1501,7 +1510,7 @@ export default function Teams() {
             {canManage && (
               <div>
                 {!showAddEvent ? (
-                  <Button variant="outline" size="sm" onClick={() => { setShowAddEvent(true); setEvtDate(selectedDateKey || today.toISOString().split('T')[0]); }} className="w-full">
+                  <Button variant="outline" size="sm" onClick={() => { setShowAddEvent(true); setEvtDate(selectedDateKey || localDateStr(today)); }} className="w-full">
                     <Plus className="h-4 w-4 mr-2" /> Add Event
                   </Button>
                 ) : (
