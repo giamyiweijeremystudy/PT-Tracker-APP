@@ -220,6 +220,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .insert({ team_id: newTeam.id, user_id: userId, role: 'admin' });
     if (joinError) return joinError.message;
 
+    await supabase.from('profiles').update({ team_id: newTeam.id }).eq('id', userId);
+
     await fetchTeamData(userId);
     return null;
   };
@@ -237,6 +239,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .from('team_members').insert({ team_id: foundTeam.id, user_id: userId, role: 'member' });
     if (joinError) return joinError.message.includes('unique') ? 'You are already in a team' : joinError.message;
 
+    await supabase.from('profiles').update({ team_id: foundTeam.id }).eq('id', userId);
+
     await fetchTeamData(userId);
     return null;
   };
@@ -245,11 +249,17 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     await supabase.from('team_members').delete().eq('user_id', session.user.id);
+    await supabase.from('profiles').update({ team_id: null }).eq('id', session.user.id);
     setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
   };
 
   const deleteTeam = async () => {
     if (!team) return;
+    // Clear team_id from all members before deleting
+    const memberIds = members.map(m => m.user_id);
+    if (memberIds.length > 0) {
+      await supabase.from('profiles').update({ team_id: null }).in('id', memberIds);
+    }
     await supabase.from('teams').delete().eq('id', team.id);
     setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
   };
