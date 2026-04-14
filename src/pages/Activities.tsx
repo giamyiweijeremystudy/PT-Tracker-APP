@@ -10,6 +10,12 @@ import { useToast } from '@/hooks/use-toast';
 import { Activity, Plus, Trash2, Pencil, MapPin, Image, X, Check, Loader2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
+
+// ─── Local date helper ────────────────────────────────────────────────────────
+function localDateStr(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ActivityType =
@@ -92,7 +98,7 @@ function activityStats(a: SavedActivity): { label: string; value: string }[] {
 }
 
 const defaultForm = () => ({
-  date: new Date().toISOString().split('T')[0],
+  date: localDateStr(),
   type: 'running' as ActivityType,
   title: '',
   custom_type: '',
