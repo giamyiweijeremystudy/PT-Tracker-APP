@@ -461,6 +461,24 @@ export default function Activities() {
       }
     }
 
+    // Mirror to personal schedule
+    if (user) {
+      const activityLabel = form.type === 'others' && form.custom_type
+        ? form.custom_type
+        : form.type.replace(/_/g, ' ');
+      const title = form.title?.trim() || activityLabel.charAt(0).toUpperCase() + activityLabel.slice(1);
+      const eventType = ['ippt_training','running','jogging','walking','cycling','swimming'].includes(form.type) ? 'PT' : 'Other';
+      await supabase.from('personal_events').upsert({
+        user_id: user.id,
+        activity_id: newActivity.id,
+        title,
+        description: form.description || '',
+        event_date: form.date,
+        event_type: eventType,
+        source: 'activity',
+      }, { onConflict: 'user_id,activity_id' });
+    }
+
     toast({ title: 'Activity posted!' });
     setForm(defaultForm()); setImageFile(null); setImagePreview(null); setShowForm(false);
     fetchActivities();
@@ -509,8 +527,9 @@ export default function Activities() {
       const path = imageUrl.split('/activity-images/')[1];
       if (path) await supabase.storage.from('activity-images').remove([path]);
     }
-    // Remove from team feed first, then delete the activity
+    // Remove from team feed and personal schedule first
     await supabase.from('team_activities').delete().eq('activity_id', id);
+    await supabase.from('personal_events').delete().eq('activity_id', id);
     const { error } = await supabase.from('activities').delete().eq('id', id);
     setDeleting(null);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
