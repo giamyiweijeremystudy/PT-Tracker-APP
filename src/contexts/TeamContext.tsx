@@ -58,8 +58,6 @@ type TeamContextValue = {
 
 const TeamContext = createContext<TeamContextValue | null>(null);
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 export function TeamProvider({ children }: { children: ReactNode }) {
   const [team, setTeam]       = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -69,59 +67,66 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   // ── Core fetch ──────────────────────────────────────────────────────────────
 
-  const fetchTeamData = useCallback(async (userId: string) => {
-    const { data: memberRow } = await supabase
-      .from('team_members')
-      .select('*, team:teams(*)')
-      .eq('user_id', userId)
-      .maybeSingle();
+  const fetchTeamData = useCallback(async (userId: string): Promise<void> => {
+    try {
+      const { data: memberRow, error: memberError } = await supabase
+        .from('team_members')
+        .select('*, team:teams(*)')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    if (!memberRow) {
-      setTeam(null);
-      setMyRole(null);
-      setMembers([]);
-      setFeed([]);
-      return;
-    }
+      if (memberError) throw memberError;
 
-    const teamData = memberRow.team as unknown as Team;
-    const role = memberRow.role as 'admin' | 'member';
-
-    const { data: membersData } = await supabase
-      .from('team_members')
-      .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
-      .eq('team_id', teamData.id)
-      .order('role', { ascending: true })
-      .order('joined_at', { ascending: true });
-
-    const membersList = (membersData ?? []) as unknown as TeamMember[];
-
-    setTeam(teamData);
-    setMyRole(role);
-    setMembers(membersList);
-
-    if (membersList.length > 0) {
-      const ids = membersList.map(m => m.user_id);
-      const { data: activityData } = await supabase
-        .from('activities')
-        .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
-        .in('user_id', ids)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (activityData) {
-        setFeed(activityData.map(a => ({
-          ...a,
-          profile: membersList.find(m => m.user_id === a.user_id)?.profile,
-        })) as TeamActivity[]);
+      if (!memberRow) {
+        setTeam(null);
+        setMyRole(null);
+        setMembers([]);
+        setFeed([]);
+        return;
       }
+
+      const teamData = memberRow.team as unknown as Team;
+      const role = memberRow.role as 'admin' | 'member';
+
+      const { data: membersData, error: membersError } = await supabase
+        .from('team_members')
+        .select('*, profile:profiles(full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds)')
+        .eq('team_id', teamData.id)
+        .order('role', { ascending: true })
+        .order('joined_at', { ascending: true });
+
+      if (membersError) throw membersError;
+
+      const membersList = (membersData ?? []) as unknown as TeamMember[];
+
+      // Set team state first — this is what switches the UI from "join" to "team" view
+      setTeam(teamData);
+      setMyRole(role);
+      setMembers(membersList);
+
+      // Feed is best-effort — don't let it block or break the above
+      if (membersList.length > 0) {
+        const ids = membersList.map(m => m.user_id);
+        const { data: activityData } = await supabase
+          .from('activities')
+          .select('id, user_id, date, type, title, custom_type, duration_minutes, distance_km, description, image_url, location, created_at')
+          .in('user_id', ids)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (activityData) {
+          setFeed(activityData.map(a => ({
+            ...a,
+            profile: membersList.find(m => m.user_id === a.user_id)?.profile,
+          })) as TeamActivity[]);
+        }
+      }
+    } catch (err) {
+      // Don't wipe team state on error — leave whatever was there
+      console.error('[TeamContext] fetchTeamData error:', err);
     }
   }, []);
 
   // ── Auth ────────────────────────────────────────────────────────────────────
-  // getSession() handles initial load/refresh — the session token is guaranteed
-  // to be attached to the client before we query.
-  // onAuthStateChange only handles SIGNED_OUT; we intentionally ignore SIGNED_IN
-  // because it fires on every page load and would cause a double-fetch race.
 
   useEffect(() => {
     let ignore = false;
@@ -138,13 +143,12 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event, _session) => {
         if (ignore) return;
         if (event === 'SIGNED_OUT') {
           setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
           setLoading(false);
         }
-        // SIGNED_IN is intentionally not handled here — getSession covers it
       }
     );
 
@@ -176,37 +180,51 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const createTeam = async (name: string, description: string): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return 'Not logged in';
-    const user = session.user;
+    const userId = session.user.id;
 
     const { data: newTeam, error } = await supabase
       .from('teams')
-      .insert({ name: name.trim(), description: description.trim(), created_by: user.id })
+      .insert({ name: name.trim(), description: description.trim(), created_by: userId })
       .select().single();
     if (error || !newTeam) return error?.message ?? 'Failed to create team';
 
     const { error: joinError } = await supabase
       .from('team_members')
-      .insert({ team_id: newTeam.id, user_id: user.id, role: 'admin' });
+      .insert({ team_id: newTeam.id, user_id: userId, role: 'admin' });
     if (joinError) return joinError.message;
 
-    await fetchTeamData(user.id);
+    // Immediately set team state so UI transitions without waiting for full fetch
+    setTeam(newTeam as Team);
+    setMyRole('admin');
+    setMembers([]);
+    setFeed([]);
+
+    // Then fetch full member list in background
+    fetchTeamData(userId);
     return null;
   };
 
   const joinTeam = async (code: string): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return 'Not logged in';
-    const user = session.user;
+    const userId = session.user.id;
 
     const { data: foundTeam, error } = await supabase
       .from('teams').select('*').eq('invite_code', code.trim().toLowerCase()).single();
     if (error || !foundTeam) return 'Invalid invite code';
 
     const { error: joinError } = await supabase
-      .from('team_members').insert({ team_id: foundTeam.id, user_id: user.id, role: 'member' });
+      .from('team_members').insert({ team_id: foundTeam.id, user_id: userId, role: 'member' });
     if (joinError) return joinError.message.includes('unique') ? 'You are already in a team' : joinError.message;
 
-    await fetchTeamData(user.id);
+    // Immediately set team state so UI transitions without waiting for full fetch
+    setTeam(foundTeam as Team);
+    setMyRole('member');
+    setMembers([]);
+    setFeed([]);
+
+    // Then fetch full member list in background
+    fetchTeamData(userId);
     return null;
   };
 
