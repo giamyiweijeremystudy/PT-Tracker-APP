@@ -14,6 +14,7 @@ export type TeamMember = {
   team_id: string;
   user_id: string;
   role: 'admin' | 'member';
+  team_role: 'admin' | 'pt_ic' | 'spartan' | 'member';
   joined_at: string;
   profile?: {
     full_name: string;
@@ -46,6 +47,8 @@ type TeamContextValue = {
   members: TeamMember[];
   feed: TeamActivity[];
   myRole: 'admin' | 'member' | null;
+  myTeamRole: 'admin' | 'pt_ic' | 'spartan' | 'member' | null;
+  updateMemberRole: (userId: string, teamRole: 'admin' | 'pt_ic' | 'spartan' | 'member') => Promise<void>;
   loading: boolean;
   createTeam: (name: string, description: string) => Promise<string | null>;
   joinTeam: (code: string) => Promise<string | null>;
@@ -62,7 +65,8 @@ export function TeamProvider({ children }: { children: ReactNode }) {
   const [team, setTeam]       = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [feed, setFeed]       = useState<TeamActivity[]>([]);
-  const [myRole, setMyRole]   = useState<'admin' | 'member' | null>(null);
+  const [myRole, setMyRole]       = useState<'admin' | 'member' | null>(null);
+  const [myTeamRole, setMyTeamRole] = useState<'admin' | 'pt_ic' | 'spartan' | 'member' | null>(null);
   const [loading, setLoading] = useState(true);
 
   // ── Feed fetch ───────────────────────────────────────────────────────────────
@@ -118,7 +122,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       if (profileError) throw profileError;
 
       if (!profile?.team_id) {
-        setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
+        setTeam(null); setMyRole(null); setMyTeamRole(null); setMembers([]); setFeed([]);
         return;
       }
 
@@ -138,7 +142,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       // Fetch members and profiles in two separate queries to avoid RLS join issues
       const { data: membersRaw } = await supabase
         .from('team_members')
-        .select('id, team_id, user_id, role, joined_at')
+        .select('id, team_id, user_id, role, team_role, joined_at')
         .eq('team_id', teamId)
         .order('role', { ascending: true })
         .order('joined_at', { ascending: true });
@@ -157,8 +161,10 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         profile: profileMap[m.user_id] ?? undefined,
       }));
 
+      const myMember = membersList.find(m => m.user_id === userId);
       setTeam(teamData);
       setMyRole(role);
+      setMyTeamRole((myMember?.team_role ?? 'member') as 'admin' | 'pt_ic' | 'spartan' | 'member');
       setMembers(membersList);
 
       await fetchFeed(teamId, membersList);
@@ -207,7 +213,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       async (event, _session) => {
         if (ignore) return;
         if (event === 'SIGNED_OUT') {
-          setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
+          setTeam(null); setMyRole(null); setMyTeamRole(null); setMembers([]); setFeed([]);
           setLoading(false);
         }
       }
@@ -236,7 +242,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
     const { error: joinError } = await supabase
       .from('team_members')
-      .insert({ team_id: newTeam.id, user_id: userId, role: 'admin' });
+      .insert({ team_id: newTeam.id, user_id: userId, role: 'admin', team_role: 'admin' });
     if (joinError) return joinError.message;
 
     await supabase.from('profiles').update({ team_id: newTeam.id }).eq('id', userId);
@@ -269,7 +275,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     if (!session) return;
     await supabase.from('team_members').delete().eq('user_id', session.user.id);
     await supabase.from('profiles').update({ team_id: null }).eq('id', session.user.id);
-    setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
+    setTeam(null); setMyRole(null); setMyTeamRole(null); setMembers([]); setFeed([]);
   };
 
   const deleteTeam = async () => {
@@ -280,7 +286,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       await supabase.from('profiles').update({ team_id: null }).in('id', memberIds);
     }
     await supabase.from('teams').delete().eq('id', team.id);
-    setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
+    setTeam(null); setMyRole(null); setMyTeamRole(null); setMembers([]); setFeed([]);
   };
 
   const removeMember = async (userId: string) => {
@@ -298,8 +304,40 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     setTeam({ ...team, name: name.trim(), description: description.trim() });
   };
 
+
+  const updateMemberRole = async (userId: string, teamRole: 'admin' | 'pt_ic' | 'spartan' | 'member') => {
+    if (!team) return;
+    // Enforce only 1 PT IC — demote any existing PT IC first
+    if (teamRole === 'pt_ic') {
+      await supabase
+        .from('team_members')
+        .update({ team_role: 'member' })
+        .eq('team_id', team.id)
+        .eq('team_role', 'pt_ic');
+    }
+    await supabase
+      .from('team_members')
+      .update({ team_role: teamRole })
+      .eq('team_id', team.id)
+      .eq('user_id', userId);
+    // Refresh members
+    const { data: membersRaw } = await supabase
+      .from('team_members')
+      .select('id, team_id, user_id, role, team_role, joined_at')
+      .eq('team_id', team.id)
+      .order('role', { ascending: true })
+      .order('joined_at', { ascending: true });
+    const memberUserIds = (membersRaw ?? []).map((m: any) => m.user_id);
+    const { data: profilesRaw } = memberUserIds.length > 0
+      ? await supabase.from('profiles').select('id, full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds').in('id', memberUserIds)
+      : { data: [] };
+    const profileMap = Object.fromEntries((profilesRaw ?? []).map((p: any) => [p.id, p]));
+    const updated: TeamMember[] = (membersRaw ?? []).map((m: any) => ({ ...m, profile: profileMap[m.user_id] ?? undefined }));
+    setMembers(updated);
+  };
+
   return (
-    <TeamContext.Provider value={{ team, members, feed, myRole, loading, createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam, refreshFeed }}>
+    <TeamContext.Provider value={{ team, members, feed, myRole, myTeamRole, loading, createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam, updateMemberRole, refreshFeed }}>
       {children}
     </TeamContext.Provider>
   );
