@@ -1,697 +1,388 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useTeam } from '@/contexts/TeamContext';
 import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Activity, Plus, Trash2, Pencil, MapPin, Image, X, Check, Loader2 } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Calendar, Plus, Trash2, Users, User, AlertCircle, X, Dumbbell } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+// ─── Local date helper (respects device timezone, e.g. UTC+8) ─────────────────
+function localDateStr(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+
+// ─── Singapore Public Holidays ────────────────────────────────────────────────
+const SG_HOLIDAYS: Record<string, string> = {
+  '2025-01-01':"New Year's Day",'2025-01-29':'Chinese New Year','2025-01-30':'Chinese New Year',
+  '2025-03-31':'Hari Raya Puasa','2025-04-18':'Good Friday','2025-05-01':'Labour Day',
+  '2025-05-12':'Vesak Day','2025-06-07':'Hari Raya Haji','2025-08-09':'National Day',
+  '2025-10-20':'Deepavali','2025-12-25':'Christmas Day',
+  '2026-01-01':"New Year's Day",'2026-02-17':'Chinese New Year','2026-02-18':'Chinese New Year',
+  '2026-03-20':'Hari Raya Puasa','2026-04-03':'Good Friday','2026-05-01':'Labour Day',
+  '2026-05-31':'Vesak Day','2026-05-27':'Hari Raya Haji','2026-08-09':'National Day',
+  '2026-11-08':'Deepavali','2026-12-25':'Christmas Day',
+  '2024-01-01':"New Year's Day",'2024-02-10':'Chinese New Year','2024-02-11':'Chinese New Year',
+  '2024-04-10':'Hari Raya Puasa','2024-03-29':'Good Friday','2024-05-01':'Labour Day',
+  '2024-05-22':'Vesak Day','2024-06-17':'Hari Raya Haji','2024-08-09':'National Day',
+  '2024-10-31':'Deepavali','2024-12-25':'Christmas Day',
+};
+
+// ─── Calendar helpers ─────────────────────────────────────────────────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function getDaysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate(); }
+function getFirstDayOfWeek(y: number, m: number) { return new Date(y, m, 1).getDay(); }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type ActivityType =
-  | 'running' | 'jogging' | 'walking'
-  | 'swimming' | 'cycling'
-  | 'ippt_training' | 'gym' | 'strength_training' | 'calisthenics'
-  | 'others';
-
-const ACTIVITY_TYPES: { value: ActivityType; label: string; emoji: string }[] = [
-  { value: 'running',           label: 'Running',           emoji: '🏃' },
-  { value: 'swimming',          label: 'Swimming',          emoji: '🏊' },
-  { value: 'ippt_training',     label: 'IPPT Training',     emoji: '🪖' },
-  { value: 'gym',               label: 'Gym',               emoji: '🏋️' },
-  { value: 'cycling',           label: 'Cycling',           emoji: '🚴' },
-  { value: 'strength_training', label: 'Strength Training', emoji: '💪' },
-  { value: 'calisthenics',      label: 'Calisthenics',      emoji: '🤸' },
-  { value: 'walking',           label: 'Walking',           emoji: '🚶' },
-  { value: 'jogging',           label: 'Jogging',           emoji: '👟' },
-  { value: 'others',            label: 'Others',            emoji: '➕' },
-];
-
-const DISTANCE_TYPES: ActivityType[] = ['running', 'jogging', 'walking', 'swimming', 'cycling'];
-const IPPT_TYPES:     ActivityType[] = ['ippt_training'];
-const GYM_TYPES:      ActivityType[] = ['gym', 'strength_training', 'calisthenics'];
-const SWIM_TYPES:     ActivityType[] = ['swimming'];
-
-type SavedActivity = {
-  id: string;
-  user_id: string;
-  date: string;
-  type: string;
-  title: string | null;
-  custom_type: string | null;
-  duration_minutes: number | null;
-  distance_km: number | null;
-  pace_per_km: number | null;
-  laps: number | null;
-  pool_length_m: number | null;
-  pushups: number | null;
-  situps: number | null;
-  run_seconds: number | null;
-  sets: number | null;
-  reps: number | null;
-  weight_kg: number | null;
-  description: string | null;
-  image_url: string | null;
-  location: string | null;
-  latitude: number | null;
-  longitude: number | null;
+type PersonalEvent = {
+  id: string; user_id: string;
+  title: string; description: string;
+  event_date: string; event_type: string;
+  source: 'personal' | 'team' | 'activity';
+  team_event_id: string | null;
+  activity_id: string | null;
   created_at: string;
 };
 
-const fmtTime = (sec: number | null) => {
-  if (!sec) return '—';
-  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+const SOURCE_STYLE: Record<string, string> = {
+  personal: 'bg-purple-100 text-purple-700 border-purple-200',
+  team:     'bg-blue-100 text-blue-700 border-blue-200',
+  activity: 'bg-emerald-100 text-emerald-700 border-emerald-200',
 };
 
-function typeLabel(a: SavedActivity) {
-  if (a.type === 'others' && a.custom_type) return a.custom_type;
-  return ACTIVITY_TYPES.find(t => t.value === a.type)?.label ?? a.type;
-}
-function typeEmoji(a: SavedActivity) {
-  if (a.type === 'others') return '➕';
-  return ACTIVITY_TYPES.find(t => t.value === a.type)?.emoji ?? '🏃';
-}
-function activityStats(a: SavedActivity): { label: string; value: string }[] {
-  const stats: { label: string; value: string }[] = [];
-  if (a.duration_minutes) stats.push({ label: 'Duration', value: `${a.duration_minutes} min` });
-  if (a.distance_km)      stats.push({ label: 'Distance', value: `${a.distance_km} km` });
-  if (a.pace_per_km)      stats.push({ label: 'Pace',     value: `${fmtTime(a.pace_per_km)}/km` });
-  if (a.laps)             stats.push({ label: 'Laps',     value: `${a.laps}` });
-  if (a.pool_length_m)    stats.push({ label: 'Pool',     value: `${a.pool_length_m}m` });
-  if (a.pushups)          stats.push({ label: 'Push-ups', value: `${a.pushups}` });
-  if (a.situps)           stats.push({ label: 'Sit-ups',  value: `${a.situps}` });
-  if (a.run_seconds)      stats.push({ label: 'Run',      value: fmtTime(a.run_seconds) });
-  if (a.sets)             stats.push({ label: 'Sets',     value: `${a.sets}` });
-  if (a.reps)             stats.push({ label: 'Reps',     value: `${a.reps}` });
-  if (a.weight_kg)        stats.push({ label: 'Weight',   value: `${a.weight_kg} kg` });
-  return stats;
-}
-
-const defaultForm = () => ({
-  date: new Date().toISOString().split('T')[0],
-  type: 'running' as ActivityType,
-  title: '',
-  custom_type: '',
-  duration_minutes: '',
-  distance_km: '',
-  laps: '',
-  pool_length_m: '',
-  pushups: '',
-  situps: '',
-  run_min: '',
-  run_sec: '',
-  sets: '',
-  reps: '',
-  weight_kg: '',
-  description: '',
-  location: '',
-  latitude: '',
-  longitude: '',
-});
-
-type FormState = ReturnType<typeof defaultForm>;
-
-function formatAddress(data: any, lat: number, lon: number): string {
-  const a = data.address ?? {};
-  const named =
-    a.amenity || a.building || a.leisure ||
-    a.suburb || a.neighbourhood || a.quarter ||
-    a.city_district || a.district ||
-    a.town || a.village || a.city || a.county;
-  if (named) return named.length > 30 ? named.slice(0, 28) + '…' : named;
-  return `Nearby (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
-}
-
-// ─── ActivityForm — defined OUTSIDE main component to prevent remounting ──────
-
-type ActivityFormProps = {
-  formData: FormState;
-  setField: (key: keyof FormState, value: string) => void;
-  imgPreview: string | null;
-  setImgPreview: (v: string | null) => void;
-  locatingState: boolean;
-  onGetLocation: () => void;
-  onSave: () => void;
-  onCancel: () => void;
-  savingState: boolean;
-  isEdit?: boolean;
-  onPhotoClick: () => void;
+const EVENT_TYPE_STYLE: Record<string, string> = {
+  PT:       'bg-blue-100 text-blue-700 border-blue-200',
+  SFT:      'bg-green-100 text-green-700 border-green-200',
+  Personal: 'bg-purple-100 text-purple-700 border-purple-200',
+  Other:    'bg-muted text-muted-foreground border-border',
 };
 
-function ActivityForm({
-  formData, setField, imgPreview, setImgPreview,
-  locatingState, onGetLocation, onSave, onCancel,
-  savingState, isEdit, onPhotoClick,
-}: ActivityFormProps) {
-  const t = formData.type;
-  return (
-    <div className="space-y-4">
-
-      {/* Date */}
-      <div className="space-y-2">
-        <Label>Date</Label>
-        <Input type="date" value={formData.date} onChange={e => setField('date', e.target.value)} className="max-w-[180px]" />
-      </div>
-
-      {/* Activity type */}
-      <div className="space-y-2">
-        <Label>Activity Type</Label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {ACTIVITY_TYPES.map(at => (
-            <button key={at.value} type="button" onClick={() => setField('type', at.value)}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${formData.type === at.value ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}>
-              <span>{at.emoji}</span><span>{at.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {t === 'others' && (
-        <div className="space-y-2">
-          <Label>Custom Activity Name</Label>
-          <Input placeholder="e.g. Rock Climbing, Yoga..." value={formData.custom_type} onChange={e => setField('custom_type', e.target.value)} />
-        </div>
-      )}
-
-      {/* Title */}
-      <div className="space-y-2">
-        <Label>Title</Label>
-        <Input placeholder="e.g. Morning Run, Leg Day..." value={formData.title} onChange={e => setField('title', e.target.value)} />
-      </div>
-
-      {/* Duration */}
-      <div className="space-y-2">
-        <Label>Duration (minutes)</Label>
-        <Input type="number" placeholder="e.g. 45" value={formData.duration_minutes} onChange={e => setField('duration_minutes', e.target.value)} className="max-w-[160px]" />
-      </div>
-
-      {/* Distance */}
-      {DISTANCE_TYPES.includes(t) && t !== 'swimming' && (
-        <div className="space-y-2">
-          <Label>Distance (km)</Label>
-          <Input type="number" step="0.1" placeholder="e.g. 5.0" value={formData.distance_km} onChange={e => setField('distance_km', e.target.value)} className="max-w-[160px]" />
-          {formData.distance_km && formData.duration_minutes && (
-            <p className="text-xs text-muted-foreground">
-              Pace: {fmtTime(Math.round((parseInt(formData.duration_minutes) * 60) / parseFloat(formData.distance_km)))}/km
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Swimming */}
-      {SWIM_TYPES.includes(t) && (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2"><Label>Distance (km)</Label><Input type="number" step="0.01" placeholder="1.0" value={formData.distance_km} onChange={e => setField('distance_km', e.target.value)} /></div>
-          <div className="space-y-2"><Label>Laps</Label><Input type="number" placeholder="40" value={formData.laps} onChange={e => setField('laps', e.target.value)} /></div>
-          <div className="space-y-2"><Label>Pool Length (m)</Label><Input type="number" placeholder="25 or 50" value={formData.pool_length_m} onChange={e => setField('pool_length_m', e.target.value)} /></div>
-        </div>
-      )}
-
-      {/* IPPT */}
-      {IPPT_TYPES.includes(t) && (
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-muted-foreground">IPPT Stations</p>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Push-ups</Label><Input type="number" placeholder="reps" value={formData.pushups} onChange={e => setField('pushups', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Sit-ups</Label><Input type="number" placeholder="reps" value={formData.situps} onChange={e => setField('situps', e.target.value)} /></div>
-            <div className="col-span-2 space-y-2">
-              <Label>2.4km Run (MM : SS)</Label>
-              <div className="flex items-center gap-2">
-                <Input type="number" placeholder="MM" value={formData.run_min} onChange={e => setField('run_min', e.target.value)} className="w-20" />
-                <span className="text-muted-foreground">:</span>
-                <Input type="number" placeholder="SS" value={formData.run_sec} onChange={e => setField('run_sec', e.target.value)} className="w-20" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Gym */}
-      {GYM_TYPES.includes(t) && (
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-muted-foreground">Session Details</p>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-2"><Label>Sets</Label><Input type="number" placeholder="3" value={formData.sets} onChange={e => setField('sets', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Reps</Label><Input type="number" placeholder="10" value={formData.reps} onChange={e => setField('reps', e.target.value)} /></div>
-            <div className="space-y-2"><Label>Weight (kg)</Label><Input type="number" step="0.5" placeholder="60" value={formData.weight_kg} onChange={e => setField('weight_kg', e.target.value)} /></div>
-          </div>
-        </div>
-      )}
-
-      {/* Location */}
-      <div className="space-y-2">
-        <Label>Location</Label>
-        <div className="flex gap-2">
-          <Input
-            placeholder="e.g. Bishan Park"
-            value={formData.location}
-            onChange={e => setField('location', e.target.value)}
-          />
-          <button
-            type="button"
-            disabled={locatingState}
-            onClick={onGetLocation}
-            className="flex items-center justify-center h-10 w-10 rounded-md border border-input bg-background hover:bg-accent shrink-0 transition-colors"
-            title="Use current location"
-          >
-            {locatingState
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <MapPin className="h-4 w-4" />}
-          </button>
-        </div>
-        {locatingState && <p className="text-xs text-muted-foreground">Getting your location...</p>}
-      </div>
-
-      {/* Description */}
-      <div className="space-y-2">
-        <Label>Description / Notes</Label>
-        <Textarea
-          placeholder="How did it go?"
-          value={formData.description}
-          onChange={e => setField('description', e.target.value)}
-          rows={3}
-        />
-      </div>
-
-      {/* Photo */}
-      <div className="space-y-2">
-        <Label>Photo</Label>
-        {imgPreview ? (
-          <div className="relative w-full rounded-xl overflow-hidden">
-            <img src={imgPreview} alt="preview" className="w-full h-auto max-h-[60vw] sm:max-h-80 object-contain bg-muted" />
-            <button
-              type="button"
-              onClick={() => setImgPreview(null)}
-              className="absolute top-2 right-2 bg-black/60 rounded-full p-1 text-white hover:bg-black/80"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={onPhotoClick}
-            className="w-full rounded-xl border-2 border-dashed border-border p-6 text-center text-muted-foreground hover:bg-muted/40 transition-colors"
-          >
-            <Image className="h-6 w-6 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Tap to add a photo</p>
-          </button>
-        )}
-      </div>
-
-      {/* Buttons */}
-      <div className="flex gap-2">
-        <Button type="button" onClick={onSave} disabled={savingState} className="flex-1">
-          {savingState
-            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{isEdit ? 'Saving...' : 'Posting...'}</>
-            : <><Check className="h-4 w-4 mr-2" />{isEdit ? 'Save Changes' : 'Post Activity'}</>}
-        </Button>
-        <Button type="button" onClick={onCancel} variant="outline" className="flex-1">
-          <X className="h-4 w-4 mr-2" />Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
-
-export default function Activities() {
-  const { user, profile } = useAuth();
-  const { team, refreshFeed } = useTeam();
+// ─── Component ────────────────────────────────────────────────────────────────
+export default function Schedule() {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const [activities, setActivities]       = useState<SavedActivity[]>([]);
-  const [form, setForm]                   = useState<FormState>(defaultForm());
-  const [saving, setSaving]               = useState(false);
-  const [showForm, setShowForm]           = useState(false);
-  const [imageFile, setImageFile]         = useState<File | null>(null);
-  const [imagePreview, setImagePreview]   = useState<string | null>(null);
-  const [locating, setLocating]           = useState(false);
-  const [deleting, setDeleting]           = useState<string | null>(null);
-  const [editingId, setEditingId]         = useState<string | null>(null);
-  const [editForm, setEditForm]           = useState<FormState>(defaultForm());
-  const [editImageFile, setEditImageFile] = useState<File | null>(null);
-  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
-  const [editLocating, setEditLocating]   = useState(false);
-  const [editSaving, setEditSaving]       = useState(false);
+  const today      = new Date();
+  const todayStr   = localDateStr(today);
 
-  const fileRef     = useRef<HTMLInputElement>(null);
-  const editFileRef = useRef<HTMLInputElement>(null);
+  const [events, setEvents]         = useState<PersonalEvent[]>([]);
+  const [calYear, setCalYear]       = useState(today.getFullYear());
+  const [calMonth, setCalMonth]     = useState(today.getMonth());
+  const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
 
-  useEffect(() => { if (user) fetchActivities(); }, [user]);
+  // Add event form
+  const [showForm, setShowForm]     = useState(false);
+  const [evtTitle, setEvtTitle]     = useState('');
+  const [evtDesc, setEvtDesc]       = useState('');
+  const [evtDate, setEvtDate]       = useState(todayStr);
+  const [evtType, setEvtType]       = useState<'PT'|'SFT'|'Personal'|'Other'>('Personal');
+  const [saving, setSaving]         = useState(false);
+  const [deleting, setDeleting]     = useState<string | null>(null);
 
-  const fetchActivities = async () => {
+  const fetchEvents = useCallback(async () => {
+    if (!user) return;
     const { data } = await supabase
-      .from('activities').select('*').eq('user_id', user!.id)
-      .order('date', { ascending: false }).order('created_at', { ascending: false });
-    if (data) setActivities(data as SavedActivity[]);
-  };
+      .from('personal_events')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('event_date', { ascending: true });
+    if (data) setEvents(data as PersonalEvent[]);
+  }, [user]);
 
-  const f  = useCallback((key: keyof FormState, value: string) => setForm(p => ({ ...p, [key]: value })), []);
-  const ef = useCallback((key: keyof FormState, value: string) => setEditForm(p => ({ ...p, [key]: value })), []);
+  useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
-  const uploadImage = async (file: File): Promise<string | null> => {
-    const ext = file.name.split('.').pop();
-    const path = `${user!.id}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from('activity-images').upload(path, file);
-    if (error) return null;
-    return supabase.storage.from('activity-images').getPublicUrl(path).data.publicUrl;
-  };
+  const dateKey = (y: number, m: number, d: number) =>
+    `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-  // Location getter — lives inside component so it has access to toast and state setters
-  const makeLocationGetter = (
-    setLocatingFn: (v: boolean) => void,
-    setFieldFn: (key: keyof FormState, value: string) => void
-  ) => () => {
-    if (!navigator.geolocation) {
-      toast({ title: 'Geolocation not supported on this device', variant: 'destructive' });
-      return;
-    }
-    setLocatingFn(true);
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const { latitude, longitude } = pos.coords;
-        setFieldFn('latitude', String(latitude));
-        setFieldFn('longitude', String(longitude));
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`,
-            { headers: { 'Accept-Language': 'en' } }
-          );
-          const data = await res.json();
-          setFieldFn('location', formatAddress(data, latitude, longitude));
-        } catch {
-          setFieldFn('location', `Nearby (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
-        }
-        setLocatingFn(false);
-      },
-      err => {
-        const msg = err.code === 1 ? 'Location permission denied — check your browser settings' : 'Could not get your location';
-        toast({ title: msg, variant: 'destructive' });
-        setLocatingFn(false);
-      },
-      { timeout: 10000, enableHighAccuracy: true }
-    );
-  };
+  const eventsOnDay  = (d: number) => events.filter(e => e.event_date === dateKey(calYear, calMonth, d));
+  const holidayOnDay = (d: number) => SG_HOLIDAYS[dateKey(calYear, calMonth, d)];
+  const isToday      = (d: number) => dateKey(calYear, calMonth, d) === todayStr;
 
-  const buildPayload = (formData: FormState, imageUrl: string | null) => {
-    const run_seconds = (formData.run_min || formData.run_sec)
-      ? parseInt(formData.run_min || '0') * 60 + parseInt(formData.run_sec || '0') : null;
-    const distance_km = formData.distance_km ? parseFloat(formData.distance_km) : null;
-    const duration_minutes = formData.duration_minutes ? parseInt(formData.duration_minutes) : null;
-    const pace_per_km = distance_km && duration_minutes &&
-      DISTANCE_TYPES.includes(formData.type) && formData.type !== 'cycling' && formData.type !== 'swimming'
-      ? Math.round((duration_minutes * 60) / distance_km) : null;
-    return {
-      user_id: user!.id, date: formData.date, type: formData.type,
-      title: formData.title || null,
-      custom_type: formData.type === 'others' ? formData.custom_type || null : null,
-      duration_minutes, distance_km, pace_per_km,
-      laps: formData.laps ? parseInt(formData.laps) : null,
-      pool_length_m: formData.pool_length_m ? parseInt(formData.pool_length_m) : null,
-      pushups: formData.pushups ? parseInt(formData.pushups) : null,
-      situps: formData.situps ? parseInt(formData.situps) : null,
-      run_seconds,
-      sets: formData.sets ? parseInt(formData.sets) : null,
-      reps: formData.reps ? parseInt(formData.reps) : null,
-      weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
-      description: formData.description || null,
-      image_url: imageUrl,
-      location: formData.location || null,
-      latitude: formData.latitude ? parseFloat(formData.latitude) : null,
-      longitude: formData.longitude ? parseFloat(formData.longitude) : null,
-    };
-  };
+  const selectedDateKey    = selectedDay ? dateKey(calYear, calMonth, selectedDay) : '';
+  const selectedDayEvents  = selectedDay ? eventsOnDay(selectedDay) : [];
+  const selectedHoliday    = selectedDay ? holidayOnDay(selectedDay) : null;
 
-  const save = async () => {
+  const prevMonth = () => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); setSelectedDay(null); };
+  const nextMonth = () => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); setSelectedDay(null); };
+
+  const handleAdd = async () => {
+    if (!evtTitle.trim() || !evtDate) { toast({ title: 'Enter a title and date', variant: 'destructive' }); return; }
     setSaving(true);
-    const imageUrl = imageFile ? await uploadImage(imageFile) : null;
-    const { data: newActivity, error } = await supabase
-      .from('activities')
-      .insert(buildPayload(form, imageUrl))
-      .select('id')
-      .single();
-    setSaving(false);
-    if (error || !newActivity) { toast({ title: 'Error', description: error?.message, variant: 'destructive' }); return; }
-
-    // Mirror to team feed — use context team if available, otherwise look up directly
-    if (user) {
-      let teamId = team?.id ?? null;
-      if (!teamId) {
-        const { data: membership } = await supabase
-          .from('team_members')
-          .select('team_id')
-          .eq('user_id', user.id)
-          .limit(1)
-          .single();
-        teamId = membership?.team_id ?? null;
-      }
-      if (teamId) {
-        await supabase.from('team_activities').insert({
-          activity_id: newActivity.id,
-          team_id: teamId,
-          user_id: user.id,
-        });
-        await refreshFeed();
-      }
-    }
-
-    // Mirror to personal schedule
-    if (user) {
-      const activityLabel = form.type === 'others' && form.custom_type
-        ? form.custom_type
-        : form.type.replace(/_/g, ' ');
-      const title = form.title?.trim() || activityLabel.charAt(0).toUpperCase() + activityLabel.slice(1);
-      const eventType = ['ippt_training','running','jogging','walking','cycling','swimming'].includes(form.type) ? 'PT' : 'Other';
-      await supabase.from('personal_events').upsert({
-        user_id: user.id,
-        activity_id: newActivity.id,
-        title,
-        description: form.description || '',
-        event_date: form.date,
-        event_type: eventType,
-        source: 'activity',
-      }, { onConflict: 'user_id,activity_id' });
-    }
-
-    toast({ title: 'Activity posted!' });
-    setForm(defaultForm()); setImageFile(null); setImagePreview(null); setShowForm(false);
-    fetchActivities();
-  };
-
-  const startEdit = (a: SavedActivity) => {
-    setEditForm({
-      date: a.date, type: (a.type as ActivityType) || 'running',
-      title: a.title || '', custom_type: a.custom_type || '',
-      duration_minutes: a.duration_minutes ? String(a.duration_minutes) : '',
-      distance_km: a.distance_km ? String(a.distance_km) : '',
-      laps: a.laps ? String(a.laps) : '',
-      pool_length_m: a.pool_length_m ? String(a.pool_length_m) : '',
-      pushups: a.pushups ? String(a.pushups) : '',
-      situps: a.situps ? String(a.situps) : '',
-      run_min: a.run_seconds ? String(Math.floor(a.run_seconds / 60)) : '',
-      run_sec: a.run_seconds ? String(a.run_seconds % 60) : '',
-      sets: a.sets ? String(a.sets) : '',
-      reps: a.reps ? String(a.reps) : '',
-      weight_kg: a.weight_kg ? String(a.weight_kg) : '',
-      description: a.description || '',
-      location: a.location || '',
-      latitude: a.latitude ? String(a.latitude) : '',
-      longitude: a.longitude ? String(a.longitude) : '',
+    const { error } = await supabase.from('personal_events').insert({
+      user_id: user!.id,
+      title: evtTitle.trim(),
+      description: evtDesc.trim(),
+      event_date: evtDate,
+      event_type: evtType,
+      source: 'personal',
     });
-    setEditImagePreview(a.image_url || null);
-    setEditImageFile(null);
-    setEditingId(a.id);
-  };
-
-  const saveEdit = async () => {
-    if (!editingId) return;
-    setEditSaving(true);
-    const imageUrl = editImageFile ? await uploadImage(editImageFile) : editImagePreview;
-    const { error } = await supabase.from('activities').update(buildPayload(editForm, imageUrl)).eq('id', editingId);
-    setEditSaving(false);
+    setSaving(false);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
-    toast({ title: 'Activity updated!' });
-    setEditingId(null);
-    fetchActivities();
+    toast({ title: 'Event added!' });
+    setEvtTitle(''); setEvtDesc(''); setEvtType('Personal');
+    setShowForm(false);
+    fetchEvents();
   };
 
-  const deleteActivity = async (id: string, imageUrl: string | null) => {
+  const handleDelete = async (id: string) => {
     setDeleting(id);
-    if (imageUrl) {
-      const path = imageUrl.split('/activity-images/')[1];
-      if (path) await supabase.storage.from('activity-images').remove([path]);
-    }
-    // Remove from team feed and personal schedule first
-    await supabase.from('team_activities').delete().eq('activity_id', id);
-    await supabase.from('personal_events').delete().eq('activity_id', id);
-    const { error } = await supabase.from('activities').delete().eq('id', id);
+    await supabase.from('personal_events').delete().eq('id', id);
     setDeleting(null);
-    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
-    await refreshFeed();
-    toast({ title: 'Deleted' });
-    fetchActivities();
+    fetchEvents();
+    toast({ title: 'Event removed' });
   };
 
-  const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
+  // Upcoming events (next 30 days)
+  const upcomingEnd = new Date(today); upcomingEnd.setDate(upcomingEnd.getDate() + 30);
+  const upcomingEndStr = localDateStr(upcomingEnd);
+  const upcomingEvents = events.filter(e => e.event_date >= todayStr && e.event_date <= upcomingEndStr)
+    .sort((a, b) => a.event_date.localeCompare(b.event_date));
 
-  // Stable location getters (won't cause re-renders)
-  const getLocationForNew  = useCallback(makeLocationGetter(setLocating, f),  [locating]);
-  const getLocationForEdit = useCallback(makeLocationGetter(setEditLocating, ef), [editLocating]);
+  const daysInMonth    = getDaysInMonth(calYear, calMonth);
+  const firstDayOfWeek = getFirstDayOfWeek(calYear, calMonth);
 
   return (
-    <div className="max-w-xl mx-auto space-y-4 pb-10">
-
-      {/* Header */}
-      <div className="flex items-center justify-between pt-2">
+    <div className="max-w-2xl mx-auto space-y-6 pb-10">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Activity className="h-7 w-7 text-primary" />
-          <h1 className="text-2xl font-bold text-foreground">Activities</h1>
+          <Calendar className="h-7 w-7 text-primary" />
+          <h1 className="text-2xl font-bold">My Schedule</h1>
         </div>
-        {!showForm && (
-          <Button onClick={() => setShowForm(true)} size="sm">
-            <Plus className="h-4 w-4 mr-1" /> Log Activity
-          </Button>
-        )}
+        <Button size="sm" onClick={() => { setEvtDate(selectedDateKey || todayStr); setShowForm(true); }}>
+          <Plus className="h-4 w-4 mr-1" /> Add Event
+        </Button>
       </div>
 
-      {/* New activity form */}
+      {/* Add event form */}
       {showForm && (
-        <div className="rounded-2xl border bg-card p-4 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">{initials}</div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">{profile?.full_name || 'You'}</p>
-              <p className="text-xs text-muted-foreground">Logging a new activity</p>
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">New Event</CardTitle>
+              <button onClick={() => setShowForm(false)} className="p-1 rounded hover:bg-muted text-muted-foreground">
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          </div>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden"
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (file) { setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
-            }} />
-          <ActivityForm
-            formData={form}
-            setField={f}
-            imgPreview={imagePreview}
-            setImgPreview={(v) => { setImagePreview(v); if (!v) setImageFile(null); }}
-            locatingState={locating}
-            onGetLocation={getLocationForNew}
-            onSave={save}
-            onCancel={() => { setShowForm(false); setForm(defaultForm()); setImagePreview(null); setImageFile(null); }}
-            savingState={saving}
-            onPhotoClick={() => fileRef.current?.click()}
-          />
-        </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Title</Label>
+              <Input placeholder="e.g. Morning run" value={evtTitle} onChange={e => setEvtTitle(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Date</Label>
+                <Input type="date" value={evtDate} onChange={e => setEvtDate(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Type</Label>
+                <Select value={evtType} onValueChange={v => setEvtType(v as any)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Personal">Personal</SelectItem>
+                    <SelectItem value="PT">PT</SelectItem>
+                    <SelectItem value="SFT">SFT</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Textarea placeholder="Details..." value={evtDesc} onChange={e => setEvtDesc(e.target.value)} rows={2} />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleAdd} disabled={saving} className="flex-1">
+                {saving ? 'Saving...' : 'Save Event'}
+              </Button>
+              <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Feed */}
-      {activities.length === 0 && !showForm ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Activity className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No activities yet</p>
-          <p className="text-sm mt-1">Hit "Log Activity" to post your first one</p>
-        </div>
-      ) : (
-        activities.map(a => (
-          <div key={a.id} className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+      {/* Calendar */}
+      <Card>
+        <CardContent className="pt-4 px-3 pb-3">
+          <div className="flex items-center justify-between mb-3 px-1">
+            <button onClick={prevMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">‹</button>
+            <span className="text-sm font-semibold">{MONTHS[calMonth]} {calYear}</span>
+            <button onClick={nextMonth} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">›</button>
+          </div>
 
-            {editingId === a.id ? (
-              <div className="p-4">
-                <p className="text-sm font-semibold mb-4 text-foreground">Editing activity</p>
-                <input ref={editFileRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (file) { setEditImageFile(file); setEditImagePreview(URL.createObjectURL(file)); }
-                  }} />
-                <ActivityForm
-                  formData={editForm}
-                  setField={ef}
-                  imgPreview={editImagePreview}
-                  setImgPreview={(v) => { setEditImagePreview(v); if (!v) setEditImageFile(null); }}
-                  locatingState={editLocating}
-                  onGetLocation={getLocationForEdit}
-                  onSave={saveEdit}
-                  onCancel={() => setEditingId(null)}
-                  savingState={editSaving}
-                  isEdit
-                  onPhotoClick={() => editFileRef.current?.click()}
-                />
+          <div className="grid grid-cols-7 mb-1">
+            {DAYS.map(d => <div key={d} className="text-center text-xs font-medium text-muted-foreground py-1">{d}</div>)}
+          </div>
+
+          <div className="grid grid-cols-7 gap-y-1">
+            {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const d        = i + 1;
+              const isSelected = selectedDay === d;
+              const todayMark  = isToday(d);
+              const hasEvents  = eventsOnDay(d).length > 0;
+              const isHoliday  = !!holidayOnDay(d);
+              const hasTeam     = eventsOnDay(d).some(e => e.source === 'team');
+              const hasActivity = eventsOnDay(d).some(e => e.source === 'activity');
+              return (
+                <button key={d} onClick={() => setSelectedDay(isSelected ? null : d)}
+                  className={`relative mx-auto flex flex-col h-9 w-9 items-center justify-center rounded-full text-sm transition-colors
+                    ${isSelected ? 'bg-primary text-primary-foreground font-semibold' : ''}
+                    ${todayMark && !isSelected ? 'border border-primary text-primary font-semibold' : ''}
+                    ${isHoliday && !isSelected && !todayMark ? 'text-red-500' : ''}
+                    ${!isSelected && !todayMark && !isHoliday ? 'hover:bg-muted text-foreground' : ''}`}>
+                  {d}
+                  {(hasEvents || isHoliday) && !isSelected && (
+                    <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                      {isHoliday   && <span className="h-1 w-1 rounded-full bg-red-400" />}
+                      {hasTeam      && <span className="h-1 w-1 rounded-full bg-blue-500" />}
+                      {hasActivity  && <span className="h-1 w-1 rounded-full bg-emerald-500" />}
+                      {hasEvents && !hasTeam && !hasActivity && <span className="h-1 w-1 rounded-full bg-primary" />}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Legend */}
+          <div className="flex items-center gap-4 mt-3 pt-2 border-t justify-center flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" /> Public Holiday</div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-blue-500 inline-block" /> Team Event</div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" /> Activity</div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-primary inline-block" /> Personal Event</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Selected day detail */}
+      {selectedDay && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">{selectedDay} {MONTHS[calMonth]} {calYear}</CardTitle>
+              <Button variant="ghost" size="sm" className="h-7 text-xs"
+                onClick={() => { setEvtDate(selectedDateKey); setShowForm(true); }}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {selectedHoliday && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 px-3 py-2">
+                <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+                <span className="text-sm font-medium text-red-700 dark:text-red-300">{selectedHoliday}</span>
+                <Badge variant="outline" className="ml-auto text-xs border-red-300 text-red-600">Public Holiday</Badge>
               </div>
-            ) : (
-              <>
-                {/* Post header */}
-                <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">{initials}</div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-semibold text-foreground">{profile?.full_name || 'You'}</p>
-                        <span className="text-base">{typeEmoji(a)}</span>
-                        <span className="text-xs font-medium text-primary">{typeLabel(a)}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <span>{new Date(a.date).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                        {a.location && <><span>·</span><MapPin className="h-3 w-3" /><span>{a.location}</span></>}
-                      </div>
+            )}
+
+            {selectedDayEvents.length === 0 && !selectedHoliday && (
+              <div className="text-center py-6 text-muted-foreground">
+                <Calendar className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No events on this day</p>
+              </div>
+            )}
+
+            {selectedDayEvents.map(e => (
+              <div key={e.id} className="rounded-lg border bg-card p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold">{e.title}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${EVENT_TYPE_STYLE[e.event_type] ?? EVENT_TYPE_STYLE['Other']}`}>
+                        {e.event_type}
+                      </span>
+                      {e.source === 'team' && <span className="flex items-center gap-1 text-xs text-blue-600"><Users className="h-3 w-3" /> Team</span>}
+                    {e.source === 'activity' && <span className="flex items-center gap-1 text-xs text-emerald-600"><Dumbbell className="h-3 w-3" /> Activity</span>}
+                      {e.source === 'activity' && <span className="flex items-center gap-1 text-xs text-emerald-600"><Dumbbell className="h-3 w-3" /> Activity</span>}
+                      {e.source === 'personal' && <span className="flex items-center gap-1 text-xs text-muted-foreground"><User className="h-3 w-3" /> Personal</span>}
                     </div>
+                    {e.description && <p className="text-xs text-muted-foreground mt-0.5">{e.description}</p>}
                   </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => startEdit(a)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
+                  {/* Activity cards navigate to /activities; personal events can be deleted */}
+                  {e.source === 'activity' && (
+                    <button
+                      onClick={() => navigate('/activities')}
+                      className="shrink-0 text-xs text-emerald-600 hover:text-emerald-700 font-medium px-2 py-1 rounded hover:bg-emerald-50 transition-colors">
+                      View →
+                    </button>
+                  )}
+                  {e.source === 'personal' && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" disabled={deleting === a.id}>
+                        <button disabled={deleting === e.id} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive transition-colors shrink-0">
                           <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        </button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete activity?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently delete this activity and cannot be undone.
-                          </AlertDialogDescription>
+                          <AlertDialogTitle>Remove event?</AlertDialogTitle>
+                          <AlertDialogDescription>"{e.title}" will be permanently removed from your schedule.</AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => deleteActivity(a.id, a.image_url)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                            Delete
-                          </AlertDialogAction>
+                          <AlertDialogAction onClick={() => handleDelete(e.id)} className="bg-destructive text-destructive-foreground">Remove</AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
-                  </div>
+                  )}
                 </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
-                {a.title && <p className="px-4 pb-1 text-sm font-semibold text-foreground">{a.title}</p>}
-                {a.description && <p className="px-4 pb-2 text-sm text-foreground leading-relaxed">{a.description}</p>}
-
-                {a.image_url && (
-                  <div className="w-full">
-                    <img src={a.image_url} alt="activity" className="w-full h-auto max-h-[75vw] sm:max-h-96 object-contain bg-muted" />
+      {/* Upcoming 30 days */}
+      {upcomingEvents.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">Upcoming (next 30 days)</p>
+          {upcomingEvents.map(e => {
+            const d = new Date(e.event_date);
+            const isEventToday = e.event_date === todayStr;
+            return (
+              <div key={e.id}
+                className={`rounded-xl border bg-card p-3 flex items-center gap-3 cursor-pointer hover:bg-muted/40 transition-colors ${isEventToday ? 'border-primary' : ''} ${e.source === 'activity' ? 'border-l-4 border-l-emerald-400' : ''}`}
+                onClick={() => {
+                  if (e.source === 'activity') { navigate('/activities'); return; }
+                  const parts = e.event_date.split('-');
+                  setCalYear(parseInt(parts[0])); setCalMonth(parseInt(parts[1]) - 1); setSelectedDay(parseInt(parts[2]));
+                }}>
+                <div className={`text-center shrink-0 w-10 ${isEventToday ? 'text-primary' : 'text-muted-foreground'}`}>
+                  <p className="text-xs font-medium">{MONTHS[d.getUTCMonth()].slice(0, 3).toUpperCase()}</p>
+                  <p className="text-xl font-bold leading-none">{d.getUTCDate()}</p>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold">{e.title}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${EVENT_TYPE_STYLE[e.event_type] ?? EVENT_TYPE_STYLE['Other']}`}>
+                      {e.event_type}
+                    </span>
+                    {e.source === 'team' && <span className="flex items-center gap-1 text-xs text-blue-600"><Users className="h-3 w-3" /> Team</span>}
+                    {e.source === 'activity' && <span className="flex items-center gap-1 text-xs text-emerald-600"><Dumbbell className="h-3 w-3" /> Activity</span>}
                   </div>
-                )}
-
-                {activityStats(a).length > 0 && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-3 border-t">
-                    {activityStats(a).map(s => (
-                      <div key={s.label} className="text-center">
-                        <div className="text-xs text-muted-foreground">{s.label}</div>
-                        <div className="text-sm font-semibold text-foreground">{s.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        ))
+                  {e.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{e.description}</p>}
+                </div>
+                {isEventToday && <Badge className="shrink-0 text-xs">Today</Badge>}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
