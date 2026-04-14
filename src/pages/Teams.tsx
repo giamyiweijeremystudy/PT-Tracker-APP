@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Users, Plus, Copy, LogOut, Trash2, Crown, MapPin, Activity, Lock } from 'lucide-react';
+import { Users, Plus, Copy, Trash2, Crown, MapPin, Activity, Lock, Settings } from 'lucide-react';
 
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
 
@@ -30,25 +30,27 @@ const AWARD_STYLE:Record<string,string>={Gold:'bg-yellow-400 text-yellow-900',Si
 const fmtTime=(sec:number|null)=>sec?`${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`:'—';
 const ACTIVITY_EMOJIS:Record<string,string>={running:'🏃',jogging:'👟',walking:'🚶',swimming:'🏊',cycling:'🚴',ippt_training:'🪖',gym:'🏋️',strength_training:'💪',calisthenics:'🤸',others:'➕'};
 
+type Tab = 'feed' | 'members' | 'settings';
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Teams() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
-  const { team, members, feed, myRole, loading, createTeam, joinTeam, leaveTeam, deleteTeam, removeMember, updateTeam } = useTeam();
+  const { team, members, feed, myRole, loading, createTeam, joinTeam, deleteTeam, removeMember, updateTeam } = useTeam();
 
   const isAdmin = (profile as any)?.is_admin === true;
 
-  // UI-only state — does NOT affect whether team screen shows
-  const [tab, setTab]             = useState<'feed'|'members'>('feed');
+  const [tab, setTab]               = useState<Tab>('feed');
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
-  const [creating, setCreating]   = useState(false);
-  const [joinCode, setJoinCode]   = useState('');
-  const [joining, setJoining]     = useState(false);
-  const [editing, setEditing]     = useState(false);
-  const [editName, setEditName]   = useState('');
-  const [editDesc, setEditDesc]   = useState('');
+  const [creating, setCreating]     = useState(false);
+  const [joinCode, setJoinCode]     = useState('');
+  const [joining, setJoining]       = useState(false);
+
+  // Settings form state
+  const [editName, setEditName]     = useState('');
+  const [editDesc, setEditDesc]     = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
   const handleCreate = async () => {
@@ -69,13 +71,12 @@ export default function Teams() {
     else toast({ title: 'Team joined!' });
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveSettings = async () => {
     if (!editName.trim()) { toast({ title: 'Name cannot be empty', variant: 'destructive' }); return; }
     setEditSaving(true);
     await updateTeam(editName, editDesc);
     setEditSaving(false);
-    setEditing(false);
-    toast({ title: 'Team updated!' });
+    toast({ title: 'Team settings saved!' });
   };
 
   const copyCode = () => {
@@ -86,6 +87,7 @@ export default function Teams() {
 
   const initials = (name: string) => name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
+  // ── Loading ───────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="max-w-2xl mx-auto pt-16 text-center text-muted-foreground">
@@ -95,7 +97,7 @@ export default function Teams() {
     );
   }
 
-  // ── No team ──────────────────────────────────────────────────────────────────
+  // ── No team ───────────────────────────────────────────────────────────────────
   if (!team) {
     return (
       <div className="max-w-lg mx-auto space-y-6 pt-2">
@@ -161,58 +163,51 @@ export default function Teams() {
     );
   }
 
-  // ── Has team ─────────────────────────────────────────────────────────────────
+  // ── Has team ──────────────────────────────────────────────────────────────────
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'feed',    label: 'Activity Feed', icon: <Activity className="h-4 w-4 inline mr-1.5" /> },
+    { id: 'members', label: 'Members',       icon: <Users className="h-4 w-4 inline mr-1.5" /> },
+    ...(myRole === 'admin' ? [{ id: 'settings' as Tab, label: 'Settings', icon: <Settings className="h-4 w-4 inline mr-1.5" /> }] : []),
+  ];
+
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-10">
 
       {/* Team header */}
       <div className="rounded-2xl border bg-card p-4 shadow-sm">
-        {editing ? (
-          <div className="space-y-3">
-            <div className="space-y-2"><Label>Team Name</Label><Input value={editName} onChange={e => setEditName(e.target.value)} /></div>
-            <div className="space-y-2"><Label>Description</Label><Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={2} /></div>
-            <div className="flex gap-2">
-              <Button onClick={handleSaveEdit} disabled={editSaving} className="flex-1">{editSaving ? 'Saving...' : 'Save'}</Button>
-              <Button onClick={() => setEditing(false)} variant="outline" className="flex-1">Cancel</Button>
-            </div>
-          </div>
-        ) : (
+        <div className="flex items-start justify-between">
           <div>
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-foreground">{team.name}</h2>
-                {team.description && <p className="text-sm text-muted-foreground mt-0.5">{team.description}</p>}
-                <p className="text-xs text-muted-foreground mt-1">{members.length} member{members.length !== 1 ? 's' : ''}</p>
-              </div>
-              {myRole === 'admin' && (
-                <Button variant="ghost" size="sm" onClick={() => { setEditName(team.name); setEditDesc(team.description); setEditing(true); }}>
-                  Edit
-                </Button>
-              )}
+            <h2 className="text-xl font-bold text-foreground">{team.name}</h2>
+            {team.description && <p className="text-sm text-muted-foreground mt-0.5">{team.description}</p>}
+            <p className="text-xs text-muted-foreground mt-1">{members.length} member{members.length !== 1 ? 's' : ''}</p>
+          </div>
+        </div>
+        {myRole === 'admin' && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground">Invite Code</p>
+              <p className="text-sm font-mono font-semibold tracking-wider">{team.invite_code}</p>
             </div>
-            {myRole === 'admin' && (
-              <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">Invite Code</p>
-                  <p className="text-sm font-mono font-semibold tracking-wider">{team.invite_code}</p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={copyCode} className="h-8 w-8">
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
+            <Button variant="ghost" size="icon" onClick={copyCode} className="h-8 w-8">
+              <Copy className="h-4 w-4" />
+            </Button>
           </div>
         )}
       </div>
 
       {/* Tabs */}
       <div className="flex rounded-xl border overflow-hidden">
-        {(['feed', 'members'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${tab === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
-            {t === 'feed'
-              ? <><Activity className="h-4 w-4 inline mr-1.5" />Activity Feed</>
-              : <><Users className="h-4 w-4 inline mr-1.5" />Members</>}
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => {
+            if (t.id === 'settings') {
+              setEditName(team.name);
+              setEditDesc(team.description ?? '');
+            }
+            setTab(t.id);
+          }}
+            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${tab === t.id ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+            {t.icon}{t.label}
           </button>
         ))}
       </div>
@@ -304,34 +299,69 @@ export default function Teams() {
               </div>
             );
           })}
+        </div>
+      )}
 
-          <div className="pt-2 space-y-2">
-            {myRole !== 'admin' && (
+      {/* Settings — admin only */}
+      {tab === 'settings' && myRole === 'admin' && (
+        <div className="space-y-4">
+
+          {/* Edit team info */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Team Info</CardTitle>
+              <CardDescription>Update your team's name and description</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Team Name</Label>
+                <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Team name" />
+              </div>
+              <div className="space-y-2">
+                <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this team about?" rows={3} />
+              </div>
+              <Button onClick={handleSaveSettings} disabled={editSaving} className="w-full">
+                {editSaving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Invite code */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Invite Code</CardTitle>
+              <CardDescription>Share this code with members to join your team</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+                <p className="flex-1 text-sm font-mono font-semibold tracking-wider">{team.invite_code}</p>
+                <Button variant="ghost" size="icon" onClick={copyCode} className="h-8 w-8">
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Danger zone */}
+          <Card className="border-destructive/40">
+            <CardHeader>
+              <CardTitle className="text-destructive">Danger Zone</CardTitle>
+              <CardDescription>Irreversible actions for this team</CardDescription>
+            </CardHeader>
+            <CardContent>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="outline" className="w-full text-destructive hover:text-destructive"><LogOut className="h-4 w-4 mr-2" />Leave Team</Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Leave team?</AlertDialogTitle>
-                    <AlertDialogDescription>You will be removed from {team.name}. You can rejoin with the invite code.</AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={leaveTeam} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Leave</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
-            {myRole === 'admin' && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" className="w-full text-destructive hover:text-destructive"><Trash2 className="h-4 w-4 mr-2" />Delete Team</Button>
+                  <Button variant="destructive" className="w-full">
+                    <Trash2 className="h-4 w-4 mr-2" /> Delete Team
+                  </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Delete team?</AlertDialogTitle>
-                    <AlertDialogDescription>This will permanently delete {team.name} and remove all members. This cannot be undone.</AlertDialogDescription>
+                    <AlertDialogDescription>
+                      This will permanently delete <strong>{team.name}</strong> and remove all members. This cannot be undone.
+                    </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -339,10 +369,12 @@ export default function Teams() {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-            )}
-          </div>
+            </CardContent>
+          </Card>
+
         </div>
       )}
+
     </div>
   );
 }
