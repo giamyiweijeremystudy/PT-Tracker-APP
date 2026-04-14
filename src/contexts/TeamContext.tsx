@@ -117,42 +117,34 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // ── Auth listener — single source of truth ──────────────────────────────────
-  // Listen to onAuthStateChange directly (not via useAuth) so the session is
-  // guaranteed to be active on the Supabase client before we query.
+  // ── Auth ────────────────────────────────────────────────────────────────────
+  // getSession() handles initial load/refresh — the session token is guaranteed
+  // to be attached to the client before we query.
+  // onAuthStateChange only handles SIGNED_OUT; we intentionally ignore SIGNED_IN
+  // because it fires on every page load and would cause a double-fetch race.
 
   useEffect(() => {
     let ignore = false;
 
-    // Handle initial page load / refresh
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (ignore) return;
-      if (session?.user) {
-        await fetchTeamData(session.user.id);
+      try {
+        if (session?.user) {
+          await fetchTeamData(session.user.id);
+        }
+      } finally {
+        if (!ignore) setLoading(false);
       }
-      setLoading(false);
     });
 
-    // Handle login / logout / token refresh events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (ignore) return;
-
-        if (event === 'SIGNED_IN') {
-          if (session?.user) {
-            setLoading(true);
-            await fetchTeamData(session.user.id);
-            setLoading(false);
-          }
-        }
-
         if (event === 'SIGNED_OUT') {
-          setTeam(null);
-          setMyRole(null);
-          setMembers([]);
-          setFeed([]);
+          setTeam(null); setMyRole(null); setMembers([]); setFeed([]);
           setLoading(false);
         }
+        // SIGNED_IN is intentionally not handled here — getSession covers it
       }
     );
 
