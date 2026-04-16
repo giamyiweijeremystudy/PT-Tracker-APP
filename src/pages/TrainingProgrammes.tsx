@@ -416,6 +416,7 @@ export default function TrainingProgrammes() {
   const [showImport, setShowImport]   = useState(false);
   const [importText, setImportText]   = useState('');
   const [importError, setImportError] = useState('');
+  const [showFormat, setShowFormat]   = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('All');
 
   const fetchPrograms = useCallback(async () => {
@@ -623,7 +624,7 @@ export default function TrainingProgrammes() {
       {/* Import Modal */}
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setShowImport(false)}>
-          <div className="w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="relative w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
               <div className="flex items-center gap-2">
                 <FileJson className="h-5 w-5 text-primary" />
@@ -636,11 +637,11 @@ export default function TrainingProgrammes() {
             <div className="p-5 space-y-4">
               <p className="text-sm text-muted-foreground">Paste JSON below or upload a <code className="text-xs bg-muted px-1 py-0.5 rounded">.json</code> file. Accepts a single program object or an array of programs.</p>
 
-              {/* Format reference */}
-              <details className="text-xs">
-                <summary className="cursor-pointer text-primary font-medium select-none">Show expected JSON format</summary>
-                <pre className="mt-2 bg-muted rounded-lg p-3 overflow-x-auto overflow-y-auto max-h-36 text-xs leading-relaxed whitespace-pre">{`{ "title": "My Program", "subtitle": "Optional", "category": "Running", "difficulty": "Beginner", "duration": "8 weeks", "frequency": "4x/week", "goal": "Run 5km", "modules": [{ "label": "Weeks 1-2", "focus": "Base Building", "sessions": [{ "name": "Day A", "exercises": [{ "text": "3x10 push-ups" }, { "text": "2km easy run" }] }], "tips": ["Stay hydrated"] }] }`}</pre>
-              </details>
+              {/* Format reference — opens full-screen view */}
+              <button onClick={() => setShowFormat(true)}
+                className="text-xs text-primary hover:underline flex items-center gap-1">
+                <FileJson className="h-3.5 w-3.5" /> View expected JSON format
+              </button>
 
               {/* File upload */}
               <div>
@@ -674,6 +675,98 @@ export default function TrainingProgrammes() {
               </Button>
             </div>
           </div>
+
+          {/* Format view — full overlay */}
+          {showFormat && (
+            <div className="absolute inset-0 bg-background rounded-2xl overflow-y-auto z-10">
+              <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b sticky top-0 bg-background">
+                <button onClick={() => setShowFormat(false)}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  ← Back
+                </button>
+                <h3 className="text-sm font-semibold">Expected JSON Format</h3>
+              </div>
+              <div className="p-5 space-y-4 text-xs">
+                <p className="text-muted-foreground">Paste or upload a <code className="bg-muted px-1 py-0.5 rounded">.json</code> file matching this structure. You can import a single program object or an array <code className="bg-muted px-1 py-0.5 rounded">[ ]</code> of programs.</p>
+                <pre className="bg-muted rounded-xl p-4 text-xs leading-relaxed overflow-x-auto whitespace-pre font-mono">{`{
+  "title": "My Program",
+  "subtitle": "Optional short description",
+  "category": "Running",
+  "difficulty": "Beginner",
+  "duration": "8 weeks",
+  "frequency": "4×/week",
+  "goal": "Run 5km without stopping",
+  "modules": [
+    {
+      "label": "Weeks 1–2",
+      "focus": "Base Building",
+      "sessions": [
+        {
+          "name": "Day A — Easy Run",
+          "exercises": [
+            { "text": "5 min brisk walk warm-up" },
+            { "text": "8× (1 min run / 2 min walk)" },
+            { "text": "5 min cool-down walk" }
+          ]
+        },
+        {
+          "name": "Day B — Strength",
+          "exercises": [
+            { "text": "3×15 push-ups" },
+            { "text": "3×20 sit-ups" },
+            { "text": "Plank 3×30s" }
+          ]
+        }
+      ],
+      "tips": [
+        "Run at a conversational pace",
+        "Sleep 7–8 hrs for recovery"
+      ]
+    },
+    {
+      "label": "Weeks 3–4",
+      "focus": "Progressive Overload",
+      "sessions": [
+        {
+          "name": "Continuous Run",
+          "exercises": [
+            { "text": "25 min easy continuous jog" }
+          ]
+        }
+      ],
+      "tips": []
+    }
+  ]
+}`}</pre>
+
+                <div className="space-y-2">
+                  <p className="font-semibold text-foreground">Field reference</p>
+                  {[
+                    ['title',      'string',  'Required. Program name.'],
+                    ['subtitle',   'string',  'Optional. Short tagline.'],
+                    ['category',   'string',  'e.g. IPPT, Running, Strength, Swimming, SFT, Home, Gym, Other'],
+                    ['difficulty', 'string',  'Must be: Beginner | Intermediate | Advanced'],
+                    ['duration',   'string',  'e.g. "8 weeks", "4 sessions"'],
+                    ['frequency',  'string',  'e.g. "4×/week", "Daily"'],
+                    ['goal',       'string',  'Optional. One-line target outcome.'],
+                    ['modules',    'array',   'List of training blocks (weeks, phases, days).'],
+                    ['label',      'string',  'Module heading, e.g. "Weeks 1–2" or "Push Day"'],
+                    ['focus',      'string',  'Module theme, e.g. "Base Building"'],
+                    ['sessions',   'array',   'Training sessions within the module.'],
+                    ['name',       'string',  'Session name, e.g. "Day A – Easy Run"'],
+                    ['exercises',  'array',   'List of { "text": "..." } objects — one per instruction line.'],
+                    ['tips',       'array',   'Optional coach tips as plain strings.'],
+                  ].map(([field, type, desc]) => (
+                    <div key={field} className="flex gap-2 border-b pb-1.5 last:border-0">
+                      <code className="text-primary font-mono w-24 shrink-0">{field}</code>
+                      <span className="text-muted-foreground w-16 shrink-0">{type}</span>
+                      <span className="text-foreground">{desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
