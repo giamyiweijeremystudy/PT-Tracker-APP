@@ -34,6 +34,22 @@ function localDateStr(date: Date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+// ─── Format date string (YYYY-MM-DD or ISO) → DD/MM/YYYY ─────────────────────
+function fmtDate(dateStr: string, opts?: { weekday?: boolean; year?: boolean }): string {
+  // Parse as local date to avoid UTC offset shifting the day
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  if (opts?.weekday) {
+    const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()];
+    const yr = opts?.year !== false ? ` ${y}` : '';
+    return `${wd}, ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}${yr}`;
+  }
+  if (opts?.year !== false) {
+    return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+  }
+  return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;
+}
+
 
 // ─── IPPT scoring ─────────────────────────────────────────────────────────────
 
@@ -292,6 +308,9 @@ export default function Teams() {
   const [sftCustom, setSftCustom]           = useState('');
 
 
+  const [submissionPopupOpen, setSubmissionPopupOpen] = useState(false);
+  const [submissionPopupDate, setSubmissionPopupDate] = useState(localDateStr(today));
+
   const handleCreate = async () => {
     if (!createName.trim()) { toast({ title: 'Enter a team name', variant: 'destructive' }); return; }
     setCreating(true);
@@ -502,10 +521,10 @@ export default function Teams() {
     fetchPosts();
   };
 
-  // ── All submissions (admin view) ─────────────────────────────────────────────
+  // ── All submissions (visible to all team members) ────────────────────────────
 
   const fetchAllSubmissions = useCallback(async () => {
-    if (!team || !canManage) return;
+    if (!team) return;
     const { data: subs } = await supabase
       .from('team_submissions').select('*')
       .eq('team_id', team.id)
@@ -518,10 +537,10 @@ export default function Teams() {
       : { data: [] };
     const profileMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
     setAllSubmissions(subs.map((s: any) => ({ ...s, profile: profileMap[s.user_id] })));
-  }, [team, canManage]);
+  }, [team]);
 
-  useEffect(() => { if (team && canManage) fetchAllSubmissions(); }, [team, canManage, fetchAllSubmissions]);
-  useEffect(() => { if (team && canManage) fetchAllSubmissions(); }, [team, canManage, fetchAllSubmissions]);
+  useEffect(() => { if (team) fetchAllSubmissions(); }, [team, fetchAllSubmissions]);
+  useEffect(() => { if (team) fetchAllSubmissions(); }, [team, fetchAllSubmissions]);
 
   const fetchActivityCounts = useCallback(async () => {
     if (!team || members.length === 0) return;
@@ -596,25 +615,40 @@ export default function Teams() {
       const rows: string[][] = [['Name', 'Rank', 'Answer', 'Submitted']];
       p.answers?.forEach(a => {
         const m = members.find(mb => mb.user_id === a.user_id);
-        rows.push([m?.profile?.full_name ?? 'Member', m?.profile?.rank ?? '', a.answer, new Date(a.created_at).toLocaleDateString('en-SG')]);
+        rows.push([m?.profile?.full_name ?? 'Member', m?.profile?.rank ?? '', a.answer, fmtDate(a.created_at.slice(0,10))]);
       });
       downloadCsv(`question_${title.replace(/\s+/g,'_')}.csv`, rows);
     }
   };
 
-  const downloadSubmissions = (fmt: 'txt' | 'csv') => {
+  const downloadSubmissions = (fmt: 'txt' | 'csv', filterDate?: string) => {
+    // Members who haven't submitted on filterDate
+    const notSubmitted = filterDate
+      ? members.filter(m => !allSubmissions.some(s => s.user_id === m.user_id && s.submission_date === filterDate))
+      : [];
+
     if (fmt === 'txt') {
-      const lines = [`Team Submissions — ${team?.name}`, `Downloaded: ${new Date().toLocaleDateString('en-SG')}`, ''];
-      allSubmissions.forEach(s => {
+      const lines = [`Team Submissions — ${team?.name}`, `Downloaded: ${fmtDate(localDateStr())}`, ''];
+      if (filterDate) lines.push(`Date: ${fmtDate(filterDate)}`, '');
+      const filtered = filterDate ? allSubmissions.filter(s => s.submission_date === filterDate) : allSubmissions;
+      filtered.forEach(s => {
         const name = s.profile ? `${s.profile.rank ? s.profile.rank + ' ' : ''}${s.profile.full_name}` : s.user_id;
-        lines.push(`${s.submission_date} | ${name} | ${s.session_type}${s.session_type==='SFT'&&s.sft_type?` (${s.sft_type}${s.sft_custom?'/'+s.sft_custom:''})`:''} | ${s.attendance_status}${s.temperature?` | ${s.temperature}°C`:''}${s.notes?` | ${s.notes}`:''}`);
+        lines.push(`${fmtDate(s.submission_date)} | ${name} | ${s.session_type}${s.session_type==='SFT'&&s.sft_type?` (${s.sft_type}${s.sft_custom?'/'+s.sft_custom:''})`:''} | ${s.attendance_status}${s.temperature?` | ${s.temperature}°C`:''}${s.notes?` | ${s.notes}`:''}`);
       });
+      if (notSubmitted.length > 0) {
+        lines.push('', '─── NOT SUBMITTED ───');
+        notSubmitted.forEach(m => {
+          const p = m.profile;
+          lines.push(`${p?.rank && p.rank !== 'Other' ? p.rank + ' ' : ''}${p?.full_name ?? 'Member'}`);
+        });
+      }
       downloadTxt(`submissions_${team?.name?.replace(/\s+/g,'_')}.txt`, lines);
     } else {
       const rows: string[][] = [['Date','Name','Rank','Session','Attendance','SFT Type','Temperature','Notes']];
-      allSubmissions.forEach(s => {
+      const filtered = filterDate ? allSubmissions.filter(s => s.submission_date === filterDate) : allSubmissions;
+      filtered.forEach(s => {
         rows.push([
-          s.submission_date,
+          fmtDate(s.submission_date),
           s.profile?.full_name ?? s.user_id,
           s.profile?.rank ?? '',
           s.session_type,
@@ -624,6 +658,19 @@ export default function Teams() {
           s.notes ?? '',
         ]);
       });
+      if (notSubmitted.length > 0) {
+        rows.push(['', '', '', '', '', '', '', '']);
+        rows.push([filterDate ? fmtDate(filterDate) : '', '─── NOT SUBMITTED ───', '', '', '', '', '', '']);
+        notSubmitted.forEach(m => {
+          const p = m.profile;
+          rows.push([
+            filterDate ? fmtDate(filterDate) : '',
+            p?.full_name ?? 'Member',
+            p?.rank ?? '',
+            '', 'Not Submitted', '', '', '',
+          ]);
+        });
+      }
       downloadCsv(`submissions_${team?.name?.replace(/\s+/g,'_')}.csv`, rows);
     }
   };
@@ -915,8 +962,8 @@ export default function Teams() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {new Date(p.created_at).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}
-                    {p.post_type==='notice' && p.pin_until && ` · Until ${new Date(p.pin_until).toLocaleDateString('en-SG',{day:'numeric',month:'short'})}`}
+                    {fmtDate(p.created_at.slice(0,10), { year: true })}
+                    {p.post_type==='notice' && p.pin_until && ` · Until ${fmtDate(p.pin_until.slice(0,10))}`}
                   </p>
                 </div>
                 {canManage && (
@@ -1104,7 +1151,7 @@ export default function Teams() {
                   </span>
                 </div>
                 <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
-                  {new Date(e.event_date).toLocaleDateString('en-SG',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}
+                  {fmtDate(e.event_date, { weekday: true })}
                 </p>
                 {e.description && <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-0.5">{e.description}</p>}
               </div>
@@ -1143,7 +1190,7 @@ export default function Teams() {
                         <span className="text-xs font-medium text-primary capitalize">{label}</span>
                       </div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <span>{new Date(a.date).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <span>{fmtDate(a.date, { year: true })}</span>
                         {a.location && <><span>·</span><MapPin className="h-3 w-3" /><span>{a.location}</span></>}
                       </div>
                     </div>
@@ -1303,16 +1350,42 @@ export default function Teams() {
 
       {/* ── Submissions ── */}
       {tab === 'submissions' && (() => {
-        const todayEvents = events.filter(e => e.event_date === subDate);
+        const todayStr = localDateStr(today);
+        // Event selector: only show events for the selected date
+        const eventsForDate = events.filter(e => e.event_date === subDate);
+        // All-team view: group by date, compute not-submitted per date
+        const submissionDates = [...new Set(allSubmissions.map(s => s.submission_date))].sort((a,b) => b.localeCompare(a));
+        const statusEmoji: Record<string,string> = { Participating:'✅', 'Light Duty':'⚠️', MC:'🏥', 'On Leave':'🏖️' };
+
+        // For popup: build state string for a given date
+        const buildStateText = (date: string) => {
+          const daySubmissions = allSubmissions.filter(s => s.submission_date === date);
+          const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
+          const lines: string[] = [`Parade State — ${fmtDate(date)}`, `Team: ${team?.name}`, ''];
+          lines.push(`✅ SUBMITTED (${daySubmissions.length})`);
+          daySubmissions.forEach(s => {
+            const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
+            lines.push(`  ${name} — ${s.session_type} | ${s.attendance_status}${s.temperature ? ` | ${s.temperature}°C` : ''}${s.notes ? ` | ${s.notes}` : ''}`);
+          });
+          if (notSub.length > 0) {
+            lines.push('', `❌ NOT SUBMITTED (${notSub.length})`);
+            notSub.forEach(m => {
+              const p = m.profile;
+              lines.push(`  ${p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}${p?.full_name ?? 'Member'}`);
+            });
+          }
+          return lines.join('\n');
+        };
+
         return (
           <div className="space-y-4">
             {/* Important pinned events */}
-            {events.filter(e => e.is_important && e.event_date >= localDateStr(today)).slice(0,3).map(e => (
+            {events.filter(e => e.is_important && e.event_date >= todayStr).slice(0,3).map(e => (
               <div key={e.id} className="flex items-start gap-2 rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3">
                 <Pin className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">{e.title}</p>
-                  <p className="text-xs text-yellow-700 dark:text-yellow-400">{new Date(e.event_date).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})} · {e.event_type}</p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-400">{fmtDate(e.event_date, { weekday: true })} · {e.event_type}</p>
                   {e.description && <p className="text-xs text-yellow-600 mt-0.5">{e.description}</p>}
                 </div>
               </div>
@@ -1330,21 +1403,29 @@ export default function Teams() {
                 {/* Date */}
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <Input type="date" value={subDate} onChange={e => setSubDate(e.target.value)} />
+                  <Input type="date" value={subDate} onChange={e => {
+                    setSubDate(e.target.value);
+                    // Reset event selection when date changes — only today's events shown
+                    setSubEventId('none');
+                  }} />
                 </div>
 
-                {/* Link to event */}
+                {/* Link to event — only shows events for the selected date */}
                 <div className="space-y-2">
                   <Label>Event <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Select value={subEventId} onValueChange={setSubEventId}>
                     <SelectTrigger><SelectValue placeholder="Select event..." /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No specific event</SelectItem>
-                      {events.map(e => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {new Date(e.event_date).toLocaleDateString('en-SG',{day:'numeric',month:'short'})} — {e.title}
-                        </SelectItem>
-                      ))}
+                      {eventsForDate.length === 0 ? (
+                        <SelectItem value="__no_events__" disabled>No events on this date</SelectItem>
+                      ) : (
+                        eventsForDate.map(e => (
+                          <SelectItem key={e.id} value={e.id}>
+                            {e.title} ({e.event_type})
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1362,7 +1443,7 @@ export default function Teams() {
                   </div>
                 </div>
 
-                {/* SFT type — only if SFT */}
+                {/* SFT type */}
                 {subType === 'SFT' && (
                   <div className="space-y-2">
                     <Label>Type of SFT</Label>
@@ -1385,10 +1466,7 @@ export default function Teams() {
                     {ATTENDANCE_STATUSES.map(s => (
                       <button key={s} onClick={() => setSubAttendance(s)}
                         className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors text-left ${subAttendance === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
-                        {s === 'Participating' && '✅ '}
-                        {s === 'Light Duty' && '⚠️ '}
-                        {s === 'MC' && '🏥 '}
-                        {s === 'On Leave' && '🏖️ '}
+                        {s === 'Participating' && '✅ '}{s === 'Light Duty' && '⚠️ '}{s === 'MC' && '🏥 '}{s === 'On Leave' && '🏖️ '}
                         {s}
                       </button>
                     ))}
@@ -1416,84 +1494,124 @@ export default function Teams() {
               </CardContent>
             </Card>
 
-            {/* Submission history */}
+            {/* My submission history */}
             {submissions.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">My Recent Submissions</p>
-                {submissions.map(s => {
-                  const statusEmoji: Record<string,string> = { Participating:'✅', 'Light Duty':'⚠️', MC:'🏥', 'On Leave':'🏖️' };
-                  return (
-                    <div key={s.id} className="rounded-lg border bg-card p-3 flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-semibold">{new Date(s.submission_date).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}</span>
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
-                          <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
-                        </div>
-                        {s.session_type === 'SFT' && s.sft_type && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
-                        )}
-                        {s.notes && <p className="text-xs text-muted-foreground mt-0.5">{s.notes}</p>}
+                {submissions.map(s => (
+                  <div key={s.id} className="rounded-lg border bg-card p-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold">{fmtDate(s.submission_date, { year: true })}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
+                        <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
                       </div>
-                      {s.temperature && <span className="text-xs text-muted-foreground shrink-0">{s.temperature}°C</span>}
+                      {s.session_type === 'SFT' && s.sft_type && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
+                      )}
+                      {s.notes && <p className="text-xs text-muted-foreground mt-0.5">{s.notes}</p>}
                     </div>
-                  );
-                })}
+                    {s.temperature && <span className="text-xs text-muted-foreground shrink-0">{s.temperature}°C</span>}
+                  </div>
+                ))}
               </div>
             )}
 
-          {/* ── Admin: All submissions ── */}
-          {canManage && (
+            {/* ── All Team Submissions (all members) ── */}
             <div className="space-y-3 pt-2 border-t mt-2">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <Users2 className="h-3.5 w-3.5" /> All Team Submissions ({allSubmissions.length})
+                  <Users2 className="h-3.5 w-3.5" /> All Team Submissions
                 </p>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('txt')}>
+                  <Button variant="outline" size="sm" className="text-xs h-7"
+                    onClick={() => { setSubmissionPopupDate(todayStr); setSubmissionPopupOpen(true); }}
+                    title="View parade state">
+                    <FileText className="h-3 w-3 mr-1" /> State
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('txt', todayStr)}>
                     <FileText className="h-3 w-3 mr-1" /> .txt
                   </Button>
-                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv')}>
+                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv', todayStr)}>
                     <Download className="h-3 w-3 mr-1" /> .csv
                   </Button>
                 </div>
               </div>
-              {allSubmissions.length === 0 ? (
+
+              {submissionDates.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-4">No submissions yet</p>
               ) : (
-                <div className="space-y-2">
-                  {allSubmissions.map(s => {
-                    const statusEmoji: Record<string,string> = { Participating:'✅', 'Light Duty':'⚠️', MC:'🏥', 'On Leave':'🏖️' };
-                    const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank + ' ' : ''}${s.profile.full_name}` : 'Member';
-                    return (
-                      <div key={s.id} className="rounded-lg border bg-card p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-semibold">{name}</span>
-                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
-                              <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
-                            </div>
-                            {s.session_type === 'SFT' && s.sft_type && (
-                              <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
-                            )}
-                            {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-xs text-muted-foreground">{new Date(s.submission_date).toLocaleDateString('en-SG',{day:'numeric',month:'short'})}</p>
-                            {s.temperature && <p className="text-xs text-muted-foreground">{s.temperature}°C</p>}
-                          </div>
+                submissionDates.map(date => {
+                  const daySubmissions = allSubmissions.filter(s => s.submission_date === date);
+                  const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
+                  return (
+                    <div key={date} className="rounded-xl border bg-card overflow-hidden">
+                      {/* Date header */}
+                      <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b">
+                        <span className="text-xs font-semibold">{fmtDate(date, { weekday: true })}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">{daySubmissions.length}/{members.length}</span>
+                          <button
+                            onClick={() => { setSubmissionPopupDate(date); setSubmissionPopupOpen(true); }}
+                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            title="View parade state">
+                            <FileText className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => downloadSubmissions('csv', date)} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Download CSV">
+                            <Download className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      {/* Submitted */}
+                      <div className="divide-y">
+                        {daySubmissions.map(s => {
+                          const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
+                          return (
+                            <div key={s.id} className="flex items-start justify-between gap-2 px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-medium">{name}</span>
+                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
+                                  <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
+                                </div>
+                                {s.session_type === 'SFT' && s.sft_type && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
+                                )}
+                                {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
+                              </div>
+                              {s.temperature && <span className="text-xs text-muted-foreground shrink-0">{s.temperature}°C</span>}
+                            </div>
+                          );
+                        })}
+
+                        {/* Not submitted */}
+                        {notSub.length > 0 && (
+                          <div className="px-3 py-2 bg-red-50/50 dark:bg-red-900/10">
+                            <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1.5">❌ Not Submitted ({notSub.length})</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {notSub.map(m => {
+                                const p = m.profile;
+                                return (
+                                  <span key={m.user_id} className="text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full px-2 py-0.5">
+                                    {p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}{p?.full_name ?? 'Member'}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
-          )}
-        </div>
+          </div>
         );
       })()}
+
+
 
       {/* ── Schedule ── */}
       {tab === 'schedule' && (() => {
@@ -1817,6 +1935,56 @@ export default function Teams() {
           </div>
         );
       })()}
+
+      {/* ── Parade State Popup ── */}
+      {submissionPopupOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setSubmissionPopupOpen(false)}>
+          <div className="w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
+              <div>
+                <h2 className="text-base font-semibold">Parade State</h2>
+                <p className="text-xs text-muted-foreground">{fmtDate(submissionPopupDate, { weekday: true })}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('txt', submissionPopupDate)}>
+                  <FileText className="h-3 w-3 mr-1" /> .txt
+                </Button>
+                <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv', submissionPopupDate)}>
+                  <Download className="h-3 w-3 mr-1" /> .csv
+                </Button>
+                <button onClick={() => setSubmissionPopupOpen(false)} className="p-1 rounded hover:bg-muted ml-1">
+                  <XIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-5 overflow-y-auto max-h-[70vh]">
+              <Textarea
+                readOnly
+                value={(() => {
+                  const daySubmissions = allSubmissions.filter(s => s.submission_date === submissionPopupDate);
+                  const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
+                  const lines: string[] = [`Parade State — ${fmtDate(submissionPopupDate)}`, `Team: ${team?.name}`, ''];
+                  lines.push(`✅ SUBMITTED (${daySubmissions.length})`);
+                  daySubmissions.forEach(s => {
+                    const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
+                    lines.push(`  ${name} — ${s.session_type} | ${s.attendance_status}${s.temperature ? ` | ${s.temperature}°C` : ''}${s.notes ? ` | ${s.notes}` : ''}`);
+                  });
+                  if (notSub.length > 0) {
+                    lines.push('', `❌ NOT SUBMITTED (${notSub.length})`);
+                    notSub.forEach(m => {
+                      const p = m.profile;
+                      lines.push(`  ${p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}${p?.full_name ?? 'Member'}`);
+                    });
+                  }
+                  return lines.join('\n');
+                })()}
+                className="font-mono text-xs resize-none w-full"
+                rows={Math.min(20, 5 + allSubmissions.filter(s => s.submission_date === submissionPopupDate).length + members.filter(m => !allSubmissions.some(s => s.user_id === m.user_id && s.submission_date === submissionPopupDate)).length + 2)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Create Post Modal ── */}
       {showPostModal && (
