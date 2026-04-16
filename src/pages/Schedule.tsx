@@ -125,6 +125,30 @@ export default function Schedule() {
     setSaving(false);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     toast({ title: 'Event added!' });
+
+    // ── Trigger notifications ──────────────────────────────────────────────
+    // Fire-and-forget: send immediately if event is today and it's past 07:00,
+    // otherwise the scheduled edge function (cron) sends it at 07:00.
+    try {
+      const now        = new Date();
+      const eventIsToday = evtDate === todayStr;
+      const isPast7am  = now.getHours() >= 7;
+      if (eventIsToday && isPast7am) {
+        const typeLabel = evtType === 'PT' ? '🪖 PT' : evtType === 'SFT' ? '🏃 SFT' : evtType === 'Personal' ? '📌 Personal' : '📅';
+        supabase.functions.invoke('send-notifications', {
+          body: {
+            user_id:  user!.id,
+            title:    `${typeLabel}: ${evtTitle.trim()}`,
+            body:     evtDesc.trim()
+              ? `Today — ${evtDesc.trim()}`
+              : `You have a ${evtType} event scheduled for today.`,
+            url:      '/schedule',
+            channels: ['push', 'email'],
+          },
+        }).catch(() => {}); // non-blocking
+      }
+    } catch (_) { /* notifications are best-effort */ }
+
     setEvtTitle(''); setEvtDesc(''); setEvtType('Personal');
     setShowForm(false);
     fetchEvents();
