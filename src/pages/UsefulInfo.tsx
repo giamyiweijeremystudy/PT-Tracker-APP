@@ -66,6 +66,9 @@ export default function UsefulInfo() {
       (myTeamRole.includes('spartan') ||
         myTeamRole.includes('admin') ||
         myTeamRole.includes('pt_ic')));
+  const canEdit =
+    isAdmin ||
+    (Array.isArray(myTeamRole) && myTeamRole.includes('pt_ic'));
 
   const [modules, setModules] = useState<InfoModule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,14 +213,14 @@ export default function UsefulInfo() {
           <Info className="h-7 w-7 text-primary" />
           <h1 className="text-2xl font-bold text-foreground">Useful Information</h1>
         </div>
-        {isAdmin && !showForm && (
+        {canEdit && !showForm && (
           <Button size="sm" onClick={openCreate}>
             <Plus className="h-4 w-4 mr-1" /> Add Module
           </Button>
         )}
       </div>
 
-      {showForm && isAdmin && (
+      {showForm && canEdit && (
         <Card className="border-primary/40">
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <CardTitle className="text-base">{editingId ? 'Edit Module' : 'New Module'}</CardTitle>
@@ -324,7 +327,7 @@ export default function UsefulInfo() {
         <div className="text-center py-16 text-muted-foreground">
           <Info className="h-10 w-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm font-medium">No modules yet</p>
-          {isAdmin && <p className="text-xs mt-1 opacity-70">Click Add Module to create one</p>}
+          {canEdit && <p className="text-xs mt-1 opacity-70">Click Add Module to create one</p>}
         </div>
       ) : (
         <div className="space-y-3">
@@ -346,7 +349,7 @@ export default function UsefulInfo() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
-                    {isAdmin && (
+                    {canEdit && (
                       <>
                         <button
                           onClick={(e) => { e.stopPropagation(); openEdit(m); }}
