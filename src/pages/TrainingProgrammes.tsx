@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Dumbbell, Plus, ChevronDown, ChevronUp, RefreshCw,
-  Clock, BarChart2, Zap, Flame, Heart, Pencil, Trash2, X, Save,
+  Clock, BarChart2, Zap, Flame, Heart, Pencil, Trash2, X, Save, Upload, FileJson,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ function ModuleBlock({ mod }: { mod: Module }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-xl border overflow-hidden">
-      <button onClick={() => setOpen(o => !o)}
+      <button onClick={() => setOpen((o: boolean) => !o)}
         className="w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/70 transition-colors text-left">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -312,23 +312,21 @@ function ProgramForm({ initial, onSave, onCancel, saving }: {
                       <button onClick={() => removeSession(mi, si)} className="text-muted-foreground hover:text-destructive p-1"><X className="h-3.5 w-3.5" /></button>
                     )}
                   </div>
-                  {sess.exercises.map((ex, ei) => (
-                    <div key={ei} className="flex items-center gap-1.5">
-                      <span className="text-primary text-xs font-bold">·</span>
-                      <Input
-                        placeholder={`Exercise ${ei + 1}`}
-                        value={typeof ex === 'string' ? ex : ex.text}
-                        onChange={e => setExercise(mi, si, ei, e.target.value)}
-                        className="h-7 text-xs flex-1"
-                      />
-                      {sess.exercises.length > 1 && (
-                        <button onClick={() => removeExercise(mi, si, ei)} className="text-muted-foreground hover:text-destructive p-0.5"><X className="h-3 w-3" /></button>
-                      )}
-                    </div>
-                  ))}
-                  <button onClick={() => addExercise(mi, si)} className="text-xs text-primary hover:underline flex items-center gap-1">
-                    <Plus className="h-3 w-3" /> Add exercise
-                  </button>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Exercises <span className="opacity-60">(one per line)</span></p>
+                    <Textarea
+                      placeholder={"3×10 push-ups\n2km warm-up jog\nPlank 3×30s\n..."}
+                      value={sess.exercises.map((ex: any) => typeof ex === 'string' ? ex : ex.text).join('\n')}
+                      onChange={e => {
+                        const lines = e.target.value.split('\n');
+                        const mods = [...form.modules];
+                        mods[mi].sessions[si].exercises = lines.map(l => ({ text: l }));
+                        setForm(f => ({ ...f, modules: mods }));
+                      }}
+                      rows={5}
+                      className="text-sm resize-y min-h-[100px]"
+                    />
+                  </div>
                 </div>
               ))}
               <button onClick={() => addSession(mi)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 border rounded px-2 py-1">
@@ -415,6 +413,9 @@ export default function TrainingProgrammes() {
   const [mode, setMode]               = useState<'list' | 'create' | 'edit'>('list');
   const [editForm, setEditForm]       = useState<ReturnType<typeof emptyForm> | null>(null);
   const [saving, setSaving]           = useState(false);
+  const [showImport, setShowImport]   = useState(false);
+  const [importText, setImportText]   = useState('');
+  const [importError, setImportError] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
 
   const fetchPrograms = useCallback(async () => {
@@ -467,7 +468,56 @@ export default function TrainingProgrammes() {
     fetchPrograms();
   };
 
-  const startEdit = (prog: Program) => {
+  const handleImport = async () => {
+    setImportError('');
+    let parsed: any;
+    try {
+      parsed = JSON.parse(importText.trim());
+    } catch {
+      setImportError('Invalid JSON. Please check the format and try again.');
+      return;
+    }
+
+    // Accept either a single program object or an array
+    const items: any[] = Array.isArray(parsed) ? parsed : [parsed];
+    const errors: string[] = [];
+
+    for (const item of items) {
+      if (!item.title) { errors.push(`Item missing "title"`); continue; }
+      const payload = {
+        created_by: (await supabase.auth.getSession()).data.session!.user.id,
+        title:      String(item.title),
+        subtitle:   String(item.subtitle ?? ''),
+        category:   String(item.category ?? 'Other'),
+        difficulty: (['Beginner','Intermediate','Advanced'].includes(item.difficulty) ? item.difficulty : 'Beginner') as Difficulty,
+        duration:   String(item.duration ?? ''),
+        frequency:  String(item.frequency ?? ''),
+        goal:       String(item.goal ?? ''),
+        modules:    Array.isArray(item.modules) ? item.modules : [],
+      };
+      const { error } = await supabase.from('training_programs').insert(payload);
+      if (error) errors.push(`"${item.title}": ${error.message}`);
+    }
+
+    if (errors.length > 0) {
+      setImportError(errors.join('\n'));
+    } else {
+      toast({ title: `${items.length} program${items.length !== 1 ? 's' : ''} imported!` });
+      setShowImport(false);
+      setImportText('');
+      fetchPrograms();
+    }
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setImportText(String(ev.target?.result ?? ''));
+    reader.readAsText(file);
+  };
+
+    const startEdit = (prog: Program) => {
     setEditForm({
       title: prog.title, subtitle: prog.subtitle,
       category: prog.category, difficulty: prog.difficulty,
@@ -524,9 +574,14 @@ export default function TrainingProgrammes() {
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           {isAdmin && (
-            <Button size="sm" onClick={() => setMode('create')}>
-              <Plus className="h-3.5 w-3.5 mr-1" /> Create
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowImport(true); setImportText(''); setImportError(''); }}>
+                <Upload className="h-3.5 w-3.5 mr-1" /> Import
+              </Button>
+              <Button size="sm" onClick={() => setMode('create')}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Create
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -563,6 +618,86 @@ export default function TrainingProgrammes() {
           {filtered.map(prog => (
             <ProgramCard key={prog.id} prog={prog} onClick={() => setSelected(prog)} />
           ))}
+        </div>
+      )}
+      {/* Import Modal */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setShowImport(false)}>
+          <div className="w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
+              <div className="flex items-center gap-2">
+                <FileJson className="h-5 w-5 text-primary" />
+                <h2 className="text-base font-semibold">Import Program</h2>
+              </div>
+              <button onClick={() => setShowImport(false)} className="p-1 rounded hover:bg-muted text-muted-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-muted-foreground">Paste JSON below or upload a <code className="text-xs bg-muted px-1 py-0.5 rounded">.json</code> file. Accepts a single program object or an array of programs.</p>
+
+              {/* Format reference */}
+              <details className="text-xs">
+                <summary className="cursor-pointer text-primary font-medium select-none">Show expected JSON format</summary>
+                <pre className="mt-2 bg-muted rounded-lg p-3 overflow-x-auto text-xs leading-relaxed whitespace-pre">{`{
+  "title": "My Program",
+  "subtitle": "Optional description",
+  "category": "Running",
+  "difficulty": "Beginner",
+  "duration": "8 weeks",
+  "frequency": "4×/week",
+  "goal": "Run 5km",
+  "modules": [
+    {
+      "label": "Weeks 1–2",
+      "focus": "Base Building",
+      "sessions": [
+        {
+          "name": "Day A",
+          "exercises": [
+            { "text": "3×10 push-ups" },
+            { "text": "2km easy run" }
+          ]
+        }
+      ],
+      "tips": ["Stay hydrated"]
+    }
+  ]
+}`}</pre>
+              </details>
+
+              {/* File upload */}
+              <div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer text-primary hover:underline">
+                  <Upload className="h-4 w-4" />
+                  Upload .json file
+                  <input type="file" accept=".json,application/json" className="hidden" onChange={handleImportFile} />
+                </label>
+              </div>
+
+              {/* Paste area */}
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground font-medium">Or paste JSON here:</p>
+                <Textarea
+                  placeholder='{ "title": "My Program", ... }'
+                  value={importText}
+                  onChange={e => { setImportText(e.target.value); setImportError(''); }}
+                  rows={8}
+                  className="text-xs font-mono resize-y"
+                />
+              </div>
+
+              {importError && (
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2">
+                  <p className="text-xs text-destructive font-medium whitespace-pre-wrap">{importError}</p>
+                </div>
+              )}
+
+              <Button onClick={handleImport} disabled={!importText.trim()} className="w-full">
+                <Upload className="h-4 w-4 mr-2" /> Import Program
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
