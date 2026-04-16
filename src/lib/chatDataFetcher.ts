@@ -2,6 +2,45 @@
 // Queries Supabase and returns plain-text summaries for the chat UI.
 
 import { supabase } from '@/integrations/supabase/client';
+import { detectTopics } from '@/lib/chatIntents';
+
+// ─── Topic → fetchChatData key mapping ───────────────────────────────────────
+
+const TOPIC_TO_QUERY: Record<string, string[]> = {
+  ippt:        ['ippt_latest'],
+  bmi:         ['bmi_latest'],
+  activities:  ['activity_summary'],
+  profile:     ['profile_summary'],
+  team:        ['team_summary'],
+  members:     ['team_summary'],
+  leaderboard: ['my_rank'],
+  at_risk:     ['at_risk_members'],
+  schedule:    ['upcoming_events'],
+  submissions: ['my_submissions'],
+  calories:    [],   // calculator only — no stored data
+  programs:    [],   // static content — no stored data
+  chat:        [],   // meta
+};
+
+export async function dynamicSearch(input: string, userId: string): Promise<string> {
+  const topics = detectTopics(input);
+
+  // Collect unique query keys across all detected topics
+  const queryKeys = [...new Set(topics.flatMap(t => TOPIC_TO_QUERY[t] ?? []))];
+
+  if (queryKeys.length === 0) {
+    return "I can help with your IPPT scores, BMI, activities, team, schedule, attendance, and more. Try asking something specific!";
+  }
+
+  const results = await Promise.all(queryKeys.map(key => fetchChatData(key, userId)));
+
+  // Filter out default fallback messages if multiple results exist
+  const meaningful = results.filter(r =>
+    !r.startsWith("Couldn't retrieve") && !r.startsWith("Something went wrong")
+  );
+
+  return (meaningful.length > 0 ? meaningful : results).join('\n\n─────\n\n');
+}
 
 function localDateStr(date: Date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
