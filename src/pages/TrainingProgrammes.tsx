@@ -639,31 +639,7 @@ export default function TrainingProgrammes() {
               {/* Format reference */}
               <details className="text-xs">
                 <summary className="cursor-pointer text-primary font-medium select-none">Show expected JSON format</summary>
-                <pre className="mt-2 bg-muted rounded-lg p-3 overflow-x-auto text-xs leading-relaxed whitespace-pre">{`{
-  "title": "My Program",
-  "subtitle": "Optional description",
-  "category": "Running",
-  "difficulty": "Beginner",
-  "duration": "8 weeks",
-  "frequency": "4×/week",
-  "goal": "Run 5km",
-  "modules": [
-    {
-      "label": "Weeks 1–2",
-      "focus": "Base Building",
-      "sessions": [
-        {
-          "name": "Day A",
-          "exercises": [
-            { "text": "3×10 push-ups" },
-            { "text": "2km easy run" }
-          ]
-        }
-      ],
-      "tips": ["Stay hydrated"]
-    }
-  ]
-}`}</pre>
+                <pre className="mt-2 bg-muted rounded-lg p-3 overflow-x-auto overflow-y-auto max-h-36 text-xs leading-relaxed whitespace-pre">{`{ "title": "My Program", "subtitle": "Optional", "category": "Running", "difficulty": "Beginner", "duration": "8 weeks", "frequency": "4x/week", "goal": "Run 5km", "modules": [{ "label": "Weeks 1-2", "focus": "Base Building", "sessions": [{ "name": "Day A", "exercises": [{ "text": "3x10 push-ups" }, { "text": "2km easy run" }] }], "tips": ["Stay hydrated"] }] }`}</pre>
               </details>
 
               {/* File upload */}
