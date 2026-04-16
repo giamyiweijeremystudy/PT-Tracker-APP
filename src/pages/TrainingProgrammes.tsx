@@ -623,8 +623,8 @@ export default function TrainingProgrammes() {
       )}
       {/* Import Modal */}
       {showImport && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setShowImport(false)}>
-          <div className="relative w-full max-w-lg max-h-[85vh] bg-background rounded-2xl shadow-xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowImport(false)}>
+          <div className="relative w-full max-w-md h-[520px] bg-background rounded-2xl shadow-xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
               <div className="flex items-center gap-2">
                 <FileJson className="h-5 w-5 text-primary" />
