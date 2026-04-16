@@ -149,8 +149,26 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
+      {/* Scrollable suggestions — shown after first prompt */}
+      {messages.length > 1 && (
+        <div className="shrink-0 mt-3 -mx-1">
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide px-1 pb-2">
+            {SUGGESTIONS.map(s => (
+              <button
+                key={s}
+                onClick={() => handleSend(s)}
+                disabled={thinking}
+                className="text-xs px-3 py-1.5 rounded-full border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors whitespace-nowrap shrink-0 disabled:opacity-40"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Input */}
-      <div className="pt-4 border-t mt-4 shrink-0">
+      <div className="pt-3 border-t mt-1 shrink-0">
         <div className="flex gap-2">
           <input
             ref={inputRef}
