@@ -1,4 +1,4 @@
-import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings, Activity, Users, CalendarDays, MessageSquare, BookMarked } from 'lucide-react';
+import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings, Activity, Users, CalendarDays, MessageSquare, BookMarked, BookOpen } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,6 +19,7 @@ const mainItems = [
   { title: 'Schedule',             url: '/schedule',     icon: CalendarDays    },
   { title: 'Programs',             url: '/programs',     icon: BookMarked      },
   { title: 'PT Assistant',         url: '/chat',         icon: MessageSquare   },
+  { title: 'Useful Information',    url: '/useful-info',  icon: BookOpen        },
 ];
 
 export function AppSidebar() {
