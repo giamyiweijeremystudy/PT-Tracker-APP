@@ -1,1 +1,6 @@
 project_id = "yhinbroostriuiepfqgo"
+
+[functions.notify-daily-schedule]
+schedule = "0 23 * * *"
+# Runs at 23:00 UTC daily = 07:00 SGT (UTC+8)
+# Sends push + email reminders for today's schedule events
