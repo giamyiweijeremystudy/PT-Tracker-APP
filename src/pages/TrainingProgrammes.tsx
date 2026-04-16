@@ -624,7 +624,7 @@ export default function TrainingProgrammes() {
       {/* Import Modal */}
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setShowImport(false)}>
-          <div className="relative w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="relative w-full max-w-lg max-h-[85vh] bg-background rounded-2xl shadow-xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
               <div className="flex items-center gap-2">
                 <FileJson className="h-5 w-5 text-primary" />
@@ -634,7 +634,7 @@ export default function TrainingProgrammes() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <p className="text-sm text-muted-foreground">Paste JSON below or upload a <code className="text-xs bg-muted px-1 py-0.5 rounded">.json</code> file. Accepts a single program object or an array of programs.</p>
 
               {/* Format reference — opens full-screen view */}
@@ -678,7 +678,7 @@ export default function TrainingProgrammes() {
 
           {/* Format view — full overlay */}
           {showFormat && (
-            <div className="absolute inset-0 bg-background rounded-2xl overflow-y-auto z-10">
+            <div className="absolute inset-0 bg-background rounded-2xl overflow-y-auto z-10 flex flex-col">
               <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b sticky top-0 bg-background">
                 <button onClick={() => setShowFormat(false)}
                   className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
