@@ -13,7 +13,7 @@ export default function BottomNav() {
   const navigate = useNavigate();
 
   return (
-    <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-card flex items-stretch h-16 safe-bottom">
+    <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-card flex items-stretch h-16">
       {NAV_ITEMS.map((item) => {
         const active = location.pathname === item.url;
         return (
