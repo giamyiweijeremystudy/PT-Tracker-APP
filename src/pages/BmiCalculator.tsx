@@ -36,6 +36,21 @@ function SliderField({ label, value, min, max, step=1, unit, onChange }: { label
   );
 }
 
+
+// ─── DD/MM/YYYY date formatter ───────────────────────────────────────────────
+function fmtDate(dateStr: string, opts?: { weekday?: boolean; year?: boolean }): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const dd = String(d).padStart(2,'0'), mm = String(m).padStart(2,'0');
+  if (opts?.weekday) {
+    const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()];
+    const yr = opts?.year !== false ? ` ${y}` : '';
+    return `${wd}, ${dd}/${mm}${yr}`;
+  }
+  if (opts?.year === false) return `${dd}/${mm}`;
+  return `${dd}/${mm}/${y}`;
+}
+
 export default function BmiCalculator() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
@@ -74,7 +89,7 @@ export default function BmiCalculator() {
     else { toast({ title:'Result deleted' }); fetchSaved(); }
   };
 
-  const graphData = savedResults.map(r=>({ name:new Date(r.created_at).toLocaleDateString('en-SG',{day:'numeric',month:'short'}), bmi:r.bmi, weight:r.weight_kg }));
+  const graphData = savedResults.map(r=>({ name:fmtDate(r.created_at.slice(0,10), { year: false }), bmi:r.bmi, weight:r.weight_kg }));
   const h = height/100;
   const healthyMin = (18.5*h*h).toFixed(1);
   const healthyMax = (24.9*h*h).toFixed(1);
@@ -182,7 +197,7 @@ export default function BmiCalculator() {
                   <div key={r.id} className="flex items-center justify-between rounded-lg border p-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">{new Date(r.created_at).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}</span>
+                        <span className="text-sm font-semibold">{fmtDate(r.created_at.slice(0,10))}</span>
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cat.bg} ${cat.text}`}>{r.category}</span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">{r.height_cm}cm · {r.weight_kg}kg</div>
