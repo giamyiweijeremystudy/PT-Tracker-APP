@@ -91,7 +91,7 @@ async function sendEmail(to: string, subject: string, html: string, resendKey: s
       "Content-Type":  "application/json",
     },
     body: JSON.stringify({
-      from:    "PT App <noreply@yourdomain.com>",  // ← update to your verified Resend domain
+      from: "PT App <onboarding@resend.dev>",  // ← update to your verified Resend domain
       to:      [to],
       subject,
       html,
