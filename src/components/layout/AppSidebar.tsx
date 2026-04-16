@@ -18,9 +18,9 @@ const mainItems = [
   { title: 'Teams',                url: '/teams',        icon: Users           },
   { title: 'Schedule',             url: '/schedule',     icon: CalendarDays    },
   { title: 'Programs',             url: '/programs',     icon: BookMarked      },
+  { title: 'Progress Tracker',      url: '/progress',     icon: TrendingUp      },
   { title: 'PT Assistant',         url: '/chat',         icon: MessageSquare   },
   { title: 'Useful Information',    url: '/useful-info',  icon: BookOpen        },
-  { title: 'Progress Tracker',      url: '/progress',     icon: TrendingUp      },
 ];
 
 export function AppSidebar() {
