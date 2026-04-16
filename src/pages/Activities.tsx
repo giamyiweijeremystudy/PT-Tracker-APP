@@ -326,6 +326,21 @@ function ActivityForm({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+
+// ─── DD/MM/YYYY date formatter ───────────────────────────────────────────────
+function fmtDate(dateStr: string, opts?: { weekday?: boolean; year?: boolean }): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const dd = String(d).padStart(2,'0'), mm = String(m).padStart(2,'0');
+  if (opts?.weekday) {
+    const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()];
+    const yr = opts?.year !== false ? ` ${y}` : '';
+    return `${wd}, ${dd}/${mm}${yr}`;
+  }
+  if (opts?.year === false) return `${dd}/${mm}`;
+  return `${dd}/${mm}/${y}`;
+}
+
 export default function Activities() {
   const { user, profile } = useAuth();
   const { team, refreshFeed } = useTeam();
@@ -642,7 +657,7 @@ export default function Activities() {
                         <span className="text-xs font-medium text-primary">{typeLabel(a)}</span>
                       </div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <span>{new Date(a.date).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <span>{fmtDate(a.date, { year: true })}</span>
                         {a.location && <><span>·</span><MapPin className="h-3 w-3" /><span>{a.location}</span></>}
                       </div>
                     </div>
