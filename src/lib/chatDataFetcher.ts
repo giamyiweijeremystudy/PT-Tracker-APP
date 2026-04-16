@@ -118,7 +118,7 @@ export async function fetchChatData(query: string, userId: string): Promise<stri
         const typeCounts: Record<string, number> = {};
         data.forEach((a: any) => { typeCounts[a.type] = (typeCounts[a.type] || 0) + 1; });
         const recent = data.slice(0, 3).map((a: any) =>
-          `  • ${a.type.replace(/_/g, ' ')} on ${new Date(a.date).toLocaleDateString('en-SG', { day: 'numeric', month: 'short' })}`
+          `  • ${a.type.replace(/_/g, ' ')} on ${(() => { const [y,m,d] = a.date.slice(0,10).split('-').map(Number); return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`; })()}`
         ).join('\n');
         return `You have ${count} activit${count === 1 ? 'y' : 'ies'} logged.\n\nRecent:\n${recent}`;
       }
@@ -215,7 +215,7 @@ export async function fetchChatData(query: string, userId: string): Promise<stri
           .limit(5);
         if (!data || data.length === 0) return "No events in the next 14 days.";
         const lines = data.map((e: any) =>
-          `  • ${new Date(e.event_date).toLocaleDateString('en-SG', { weekday: 'short', day: 'numeric', month: 'short' })} — ${e.title} (${e.event_type})`
+          `  • ${(() => { const [y,m,d] = e.event_date.slice(0,10).split('-').map(Number); const wd=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(y,m-1,d).getDay()]; return `${wd} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`; })()} — ${e.title} (${e.event_type})`
         );
         return `Upcoming events (next 14 days):\n${lines.join('\n')}`;
       }
@@ -230,7 +230,7 @@ export async function fetchChatData(query: string, userId: string): Promise<stri
         if (!data || data.length === 0) return "No attendance submissions yet.";
         const emoji: Record<string, string> = { Participating: '✅', 'Light Duty': '⚠️', MC: '🏥', 'On Leave': '🏖️' };
         const lines = data.map((s: any) =>
-          `  • ${new Date(s.submission_date).toLocaleDateString('en-SG', { day: 'numeric', month: 'short' })} — ${s.session_type} ${emoji[s.attendance_status] ?? ''} ${s.attendance_status}`
+          `  • ${(() => { const [y,m,d] = s.submission_date.slice(0,10).split('-').map(Number); return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`; })()} — ${s.session_type} ${emoji[s.attendance_status] ?? ''} ${s.attendance_status}`
         );
         return `Your recent attendance:\n${lines.join('\n')}`;
       }
