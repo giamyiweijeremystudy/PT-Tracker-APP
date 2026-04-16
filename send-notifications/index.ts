@@ -1,5 +1,5 @@
 /**
- * send-notifications — Supabase Edge Function
+ * send-notifications — Supabase Edge Functions
  *
  * Called by the frontend (or a pg_cron job) to dispatch:
  *   - Email reminders via Resend
