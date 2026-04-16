@@ -44,6 +44,21 @@ function SliderField({ label, value, min, max, step=1, onChange, display }: { la
   );
 }
 
+
+// ─── DD/MM/YYYY date formatter ───────────────────────────────────────────────
+function fmtDate(dateStr: string, opts?: { weekday?: boolean; year?: boolean }): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const dd = String(d).padStart(2,'0'), mm = String(m).padStart(2,'0');
+  if (opts?.weekday) {
+    const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()];
+    const yr = opts?.year !== false ? ` ${y}` : '';
+    return `${wd}, ${dd}/${mm}${yr}`;
+  }
+  if (opts?.year === false) return `${dd}/${mm}`;
+  return `${dd}/${mm}/${y}`;
+}
+
 export default function IpptCalculator() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
@@ -84,7 +99,7 @@ export default function IpptCalculator() {
   };
 
   const ageLabel = AGE_GROUPS.find(g=>age>=g.min&&age<=g.max)?.label??`Age ${age}`;
-  const graphData = savedResults.map((r,i)=>({ name:new Date(r.created_at).toLocaleDateString('en-SG',{day:'numeric',month:'short'}), attempt:i+1, total:r.total, pushups:r.pu_pts, situps:r.su_pts, run:r.run_pts }));
+  const graphData = savedResults.map((r,i)=>({ name:fmtDate(r.created_at.slice(0,10), { year: false }), attempt:i+1, total:r.total, pushups:r.pu_pts, situps:r.su_pts, run:r.run_pts }));
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -199,7 +214,7 @@ export default function IpptCalculator() {
                   <div key={r.id} className="flex items-center justify-between rounded-lg border p-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">{new Date(r.created_at).toLocaleDateString('en-SG',{day:'numeric',month:'short',year:'numeric'})}</span>
+                        <span className="text-sm font-semibold">{fmtDate(r.created_at.slice(0,10))}</span>
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.badge}`}>{r.award}</span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">Age {r.age} · PU: {r.pushups} ({r.pu_pts}pts) · SU: {r.situps} ({r.su_pts}pts) · Run: {fmtTime(r.run_seconds)} ({r.run_pts}pts)</div>
