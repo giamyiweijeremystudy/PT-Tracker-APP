@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,125 +11,46 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, Plus, ArrowLeft, Trash2, ChevronRight } from 'lucide-react';
+import { TrendingUp, Plus, ArrowLeft, Trash2, X } from 'lucide-react';
+
+// ── Exercise presets ──────────────────────────────────────────────────────────
+
+const PRESETS = [
+  { value: 'running',           label: 'Running',           emoji: '🏃' },
+  { value: 'swimming',          label: 'Swimming',          emoji: '🏊' },
+  { value: 'ippt_training',     label: 'IPPT Training',     emoji: '🪖' },
+  { value: 'gym',               label: 'Gym',               emoji: '🏋️' },
+  { value: 'cycling',           label: 'Cycling',           emoji: '🚴' },
+  { value: 'strength_training', label: 'Strength Training', emoji: '💪' },
+  { value: 'calisthenics',      label: 'Calisthenics',      emoji: '🤸' },
+  { value: 'walking',           label: 'Walking',           emoji: '🚶' },
+  { value: 'jogging',           label: 'Jogging',           emoji: '👟' },
+  { value: 'others',            label: 'Others',            emoji: '➕' },
+];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ExerciseKey =
-  | 'running' | 'jogging' | 'walking' | 'swimming' | 'cycling'
-  | 'ippt_training' | 'gym' | 'strength_training' | 'calisthenics' | 'others';
-
-interface ExerciseDef {
-  label: string;
+interface TrackerModule {
+  id: string;
+  user_id: string;
+  exercise_key: string;
+  exercise_label: string;
   emoji: string;
-  metrics: MetricDef[];
-}
-
-interface MetricDef {
-  key: string;
-  label: string;
-  unit: string;
-  type: 'number' | 'time';
-  step?: number;
-  placeholder?: string;
+  metric_labels: string[];
+  created_at: string;
 }
 
 interface ProgressEntry {
   id: string;
+  module_id: string;
   user_id: string;
-  exercise_key: string;
   logged_at: string;
-  metrics: Record<string, number>;
+  metric_values: number[];
   notes: string;
   created_at: string;
 }
-
-// ── Exercise definitions with their trackable metrics ─────────────────────────
-
-const EXERCISES: Record<ExerciseKey, ExerciseDef> = {
-  running: {
-    label: 'Running', emoji: '🏃',
-    metrics: [
-      { key: 'distance_km', label: 'Distance', unit: 'km', type: 'number', step: 0.1, placeholder: 'e.g. 2.4' },
-      { key: 'duration_min', label: 'Duration', unit: 'min', type: 'number', step: 1, placeholder: 'e.g. 12' },
-      { key: 'avg_pace', label: 'Avg Pace', unit: 'min/km', type: 'number', step: 0.1, placeholder: 'e.g. 5.5' },
-    ],
-  },
-  jogging: {
-    label: 'Jogging', emoji: '👟',
-    metrics: [
-      { key: 'distance_km', label: 'Distance', unit: 'km', type: 'number', step: 0.1, placeholder: 'e.g. 3.0' },
-      { key: 'duration_min', label: 'Duration', unit: 'min', type: 'number', step: 1, placeholder: 'e.g. 20' },
-    ],
-  },
-  walking: {
-    label: 'Walking', emoji: '🚶',
-    metrics: [
-      { key: 'distance_km', label: 'Distance', unit: 'km', type: 'number', step: 0.1, placeholder: 'e.g. 5.0' },
-      { key: 'duration_min', label: 'Duration', unit: 'min', type: 'number', step: 1, placeholder: 'e.g. 45' },
-      { key: 'steps', label: 'Steps', unit: 'steps', type: 'number', step: 100, placeholder: 'e.g. 8000' },
-    ],
-  },
-  swimming: {
-    label: 'Swimming', emoji: '🏊',
-    metrics: [
-      { key: 'distance_m', label: 'Distance', unit: 'm', type: 'number', step: 50, placeholder: 'e.g. 1000' },
-      { key: 'duration_min', label: 'Duration', unit: 'min', type: 'number', step: 1, placeholder: 'e.g. 30' },
-      { key: 'laps', label: 'Laps', unit: 'laps', type: 'number', step: 1, placeholder: 'e.g. 20' },
-    ],
-  },
-  cycling: {
-    label: 'Cycling', emoji: '🚴',
-    metrics: [
-      { key: 'distance_km', label: 'Distance', unit: 'km', type: 'number', step: 0.5, placeholder: 'e.g. 20' },
-      { key: 'duration_min', label: 'Duration', unit: 'min', type: 'number', step: 1, placeholder: 'e.g. 60' },
-      { key: 'avg_speed_kmh', label: 'Avg Speed', unit: 'km/h', type: 'number', step: 0.5, placeholder: 'e.g. 25' },
-    ],
-  },
-  ippt_training: {
-    label: 'IPPT Training', emoji: '🪖',
-    metrics: [
-      { key: 'pushups', label: 'Push-ups', unit: 'reps', type: 'number', step: 1, placeholder: 'e.g. 30' },
-      { key: 'situps', label: 'Sit-ups', unit: 'reps', type: 'number', step: 1, placeholder: 'e.g. 30' },
-      { key: 'run_2_4km_min', label: '2.4km Run', unit: 'min', type: 'number', step: 0.1, placeholder: 'e.g. 11.5' },
-    ],
-  },
-  gym: {
-    label: 'Gym', emoji: '🏋️',
-    metrics: [
-      { key: 'duration_min', label: 'Duration', unit: 'min', type: 'number', step: 5, placeholder: 'e.g. 60' },
-      { key: 'sets', label: 'Total Sets', unit: 'sets', type: 'number', step: 1, placeholder: 'e.g. 15' },
-      { key: 'max_weight_kg', label: 'Max Weight', unit: 'kg', type: 'number', step: 2.5, placeholder: 'e.g. 80' },
-    ],
-  },
-  strength_training: {
-    label: 'Strength Training', emoji: '💪',
-    metrics: [
-      { key: 'sets', label: 'Sets', unit: 'sets', type: 'number', step: 1, placeholder: 'e.g. 12' },
-      { key: 'reps', label: 'Reps (per set)', unit: 'reps', type: 'number', step: 1, placeholder: 'e.g. 10' },
-      { key: 'max_weight_kg', label: 'Max Weight', unit: 'kg', type: 'number', step: 2.5, placeholder: 'e.g. 60' },
-    ],
-  },
-  calisthenics: {
-    label: 'Calisthenics', emoji: '🤸',
-    metrics: [
-      { key: 'pushups', label: 'Push-ups', unit: 'reps', type: 'number', step: 1, placeholder: 'e.g. 25' },
-      { key: 'pullups', label: 'Pull-ups', unit: 'reps', type: 'number', step: 1, placeholder: 'e.g. 10' },
-      { key: 'dips', label: 'Dips', unit: 'reps', type: 'number', step: 1, placeholder: 'e.g. 15' },
-      { key: 'duration_min', label: 'Duration', unit: 'min', type: 'number', step: 1, placeholder: 'e.g. 30' },
-    ],
-  },
-  others: {
-    label: 'Others', emoji: '➕',
-    metrics: [
-      { key: 'duration_min', label: 'Duration', unit: 'min', type: 'number', step: 1, placeholder: 'e.g. 30' },
-      { key: 'reps', label: 'Reps', unit: 'reps', type: 'number', step: 1, placeholder: 'e.g. 20' },
-      { key: 'sets', label: 'Sets', unit: 'sets', type: 'number', step: 1, placeholder: 'e.g. 3' },
-    ],
-  },
-};
 
 // ── Date formatter ────────────────────────────────────────────────────────────
 
@@ -138,33 +59,164 @@ function fmtDate(iso: string) {
   return String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + y;
 }
 
-// ── Module menu ───────────────────────────────────────────────────────────────
+function todayStr() {
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+}
 
-function ModuleMenu({ onSelect }: { onSelect: (key: ExerciseKey) => void }) {
+// ── Add Exercise Modal ────────────────────────────────────────────────────────
+
+function AddExerciseModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (mod: Omit<TrackerModule, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
+}) {
+  const [selected, setSelected] = useState<string>('');
+  const [customLabel, setCustomLabel] = useState('');
+  const [customEmoji, setCustomEmoji] = useState('');
+  const [metricInputs, setMetricInputs] = useState<string[]>(['', '']);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  const isCustom = selected === '__custom__';
+  const preset = PRESETS.find((p) => p.value === selected);
+
+  const handleCreate = async () => {
+    const label = isCustom ? customLabel.trim() : preset?.label ?? '';
+    if (!label) { toast({ title: 'Enter an exercise name', variant: 'destructive' }); return; }
+    const metrics = metricInputs.map((m) => m.trim()).filter(Boolean);
+    if (metrics.length === 0) { toast({ title: 'Add at least one metric (e.g. Reps)', variant: 'destructive' }); return; }
+    setSaving(true);
+    await onCreate({
+      exercise_key: isCustom ? 'custom_' + Date.now() : selected,
+      exercise_label: label,
+      emoji: isCustom ? (customEmoji || '🏅') : (preset?.emoji ?? '🏅'),
+      metric_labels: metrics,
+    });
+    setSaving(false);
+  };
+
+  const addMetric = () => setMetricInputs((p) => [...p, '']);
+  const removeMetric = (i: number) => setMetricInputs((p) => p.filter((_, j) => j !== i));
+  const updateMetric = (i: number, v: string) => setMetricInputs((p) => p.map((m, j) => j === i ? v : m));
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <TrendingUp className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Progress Tracker</h1>
-      </div>
-      <p className="text-sm text-muted-foreground">Select an exercise to view or log your progress.</p>
-      <div className="grid grid-cols-1 gap-2">
-        {(Object.keys(EXERCISES) as ExerciseKey[]).map((key) => {
-          const ex = EXERCISES[key];
-          return (
-            <button
-              key={key}
-              onClick={() => onSelect(key)}
-              className="flex items-center justify-between rounded-xl border bg-card px-4 py-3.5 text-left hover:bg-muted/40 transition-colors shadow-sm"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-xl">{ex.emoji}</span>
-                <span className="font-semibold text-sm">{ex.label}</span>
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
+          <h2 className="text-base font-semibold">Add Exercise</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
+
+          {/* Preset grid */}
+          <div className="space-y-2">
+            <Label>Select type</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => { setSelected(p.value); setCustomLabel(''); setCustomEmoji(''); }}
+                  className={
+                    'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors text-left ' +
+                    (selected === p.value
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-background hover:bg-muted')
+                  }
+                >
+                  <span className="text-base">{p.emoji}</span>
+                  {p.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setSelected('__custom__')}
+                className={
+                  'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors text-left ' +
+                  (selected === '__custom__'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background hover:bg-muted')
+                }
+              >
+                <span className="text-base">✏️</span>
+                Custom
+              </button>
+            </div>
+          </div>
+
+          {/* Custom name + emoji */}
+          {isCustom && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label>Emoji</Label>
+                <Input
+                  placeholder="🏅"
+                  value={customEmoji}
+                  onChange={(e) => setCustomEmoji(e.target.value)}
+                  maxLength={2}
+                />
               </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-          );
-        })}
+              <div className="col-span-2 space-y-1.5">
+                <Label>Exercise name</Label>
+                <Input
+                  placeholder="e.g. Deadlift"
+                  value={customLabel}
+                  onChange={(e) => setCustomLabel(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Metrics */}
+          {selected && (
+            <div className="space-y-2">
+              <Label>Metrics to track</Label>
+              <p className="text-xs text-muted-foreground">
+                Name each value you want to log, e.g. Reps, Weight (kg), Time (min)
+              </p>
+              {metricInputs.map((m, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input
+                    placeholder={'Metric ' + (i + 1)}
+                    value={m}
+                    onChange={(e) => updateMetric(i, e.target.value)}
+                  />
+                  {metricInputs.length > 1 && (
+                    <button
+                      onClick={() => removeMetric(i)}
+                      className="p-2 rounded hover:bg-muted text-muted-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {metricInputs.length < 6 && (
+                <Button variant="outline" size="sm" onClick={addMetric}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add metric
+                </Button>
+              )}
+            </div>
+          )}
+
+          <Button
+            onClick={handleCreate}
+            disabled={saving || !selected}
+            className="w-full"
+          >
+            {saving ? 'Creating...' : 'Create Exercise'}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -173,24 +225,22 @@ function ModuleMenu({ onSelect }: { onSelect: (key: ExerciseKey) => void }) {
 // ── Exercise detail view ──────────────────────────────────────────────────────
 
 function ExerciseDetail({
-  exerciseKey,
+  mod,
   onBack,
+  onDelete,
 }: {
-  exerciseKey: ExerciseKey;
+  mod: TrackerModule;
   onBack: () => void;
+  onDelete: () => void;
 }) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const ex = EXERCISES[exerciseKey];
 
   const [entries, setEntries] = useState<ProgressEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [formValues, setFormValues] = useState<Record<string, string>>({});
-  const [formDate, setFormDate] = useState(() => {
-    const now = new Date();
-    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-  });
+  const [formValues, setFormValues] = useState<string[]>(mod.metric_labels.map(() => ''));
+  const [formDate, setFormDate] = useState(todayStr);
   const [formNotes, setFormNotes] = useState('');
 
   const fetchEntries = useCallback(async () => {
@@ -199,32 +249,27 @@ function ExerciseDetail({
     const { data } = await supabase
       .from('progress_entries')
       .select('*')
+      .eq('module_id', mod.id)
       .eq('user_id', user.id)
-      .eq('exercise_key', exerciseKey)
       .order('logged_at', { ascending: true });
     if (data) setEntries(data as ProgressEntry[]);
     setLoading(false);
-  }, [user, exerciseKey]);
+  }, [user, mod.id]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
   const handleSubmit = async () => {
     if (!user) return;
-    const metrics: Record<string, number> = {};
-    let hasAny = false;
-    for (const m of ex.metrics) {
-      const v = parseFloat(formValues[m.key] ?? '');
-      if (!isNaN(v)) { metrics[m.key] = v; hasAny = true; }
-    }
-    if (!hasAny) {
+    const vals = formValues.map((v) => parseFloat(v));
+    if (vals.every(isNaN)) {
       toast({ title: 'Enter at least one value', variant: 'destructive' }); return;
     }
     setSaving(true);
     const { error } = await supabase.from('progress_entries').insert({
+      module_id: mod.id,
       user_id: user.id,
-      exercise_key: exerciseKey,
       logged_at: formDate,
-      metrics,
+      metric_values: vals.map((v) => (isNaN(v) ? null : v)),
       notes: formNotes.trim(),
     });
     setSaving(false);
@@ -232,13 +277,13 @@ function ExerciseDetail({
       toast({ title: 'Error saving', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Progress logged!' });
-      setFormValues({});
+      setFormValues(mod.metric_labels.map(() => ''));
       setFormNotes('');
       fetchEntries();
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDeleteEntry = async (id: string) => {
     const { error } = await supabase.from('progress_entries').delete().eq('id', id);
     if (error) {
       toast({ title: 'Error deleting', description: error.message, variant: 'destructive' });
@@ -248,61 +293,92 @@ function ExerciseDetail({
     }
   };
 
-  // Build chart data - one series per metric
+  // Chart data - one series per metric
   const chartData = entries.map((e) => {
     const point: Record<string, any> = { date: fmtDate(e.logged_at) };
-    for (const m of ex.metrics) {
-      if (e.metrics[m.key] !== undefined) point[m.key] = e.metrics[m.key];
-    }
+    mod.metric_labels.forEach((label, i) => {
+      if (e.metric_values[i] !== null && e.metric_values[i] !== undefined) {
+        point[label] = e.metric_values[i];
+      }
+    });
     return point;
   });
 
-  const CHART_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#3b82f6'];
+  const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#a855f7'];
 
   return (
     <div className="space-y-5 pb-10">
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <span className="text-xl">{ex.emoji}</span>
-        <h1 className="text-xl font-bold text-foreground">{ex.label}</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <span className="text-xl">{mod.emoji}</span>
+          <h1 className="text-xl font-bold">{mod.exercise_label}</h1>
+        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <button className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-destructive transition-colors">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete exercise?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the module and all its logged entries permanently.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={onDelete} className="bg-destructive text-destructive-foreground">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Log form */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Plus className="h-4 w-4" /> Log Progress
-          </CardTitle>
-          <CardDescription>Record your latest {ex.label.toLowerCase()} numbers</CardDescription>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Log Entry</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
             <Label>Date</Label>
-            <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="max-w-[180px]" />
+            <Input
+              type="date"
+              value={formDate}
+              onChange={(e) => setFormDate(e.target.value)}
+              className="max-w-[180px]"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {ex.metrics.map((m) => (
-              <div key={m.key} className="space-y-1.5">
-                <Label>{m.label} <span className="text-muted-foreground text-xs">({m.unit})</span></Label>
+            {mod.metric_labels.map((label, i) => (
+              <div key={i} className="space-y-1.5">
+                <Label>{label}</Label>
                 <Input
                   type="number"
-                  step={m.step}
-                  placeholder={m.placeholder}
-                  value={formValues[m.key] ?? ''}
-                  onChange={(e) => setFormValues((prev) => ({ ...prev, [m.key]: e.target.value }))}
+                  step="any"
+                  placeholder="0"
+                  value={formValues[i]}
+                  onChange={(e) => {
+                    const next = [...formValues];
+                    next[i] = e.target.value;
+                    setFormValues(next);
+                  }}
                 />
               </div>
             ))}
           </div>
           <div className="space-y-1.5">
-            <Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
+            <Label>Notes <span className="text-xs text-muted-foreground">(optional)</span></Label>
             <Input
               placeholder="Any remarks..."
               value={formNotes}
@@ -310,42 +386,46 @@ function ExerciseDetail({
             />
           </div>
           <Button onClick={handleSubmit} disabled={saving} className="w-full">
-            {saving ? 'Saving...' : 'Log Entry'}
+            {saving ? 'Saving...' : 'Submit'}
           </Button>
         </CardContent>
       </Card>
 
-      {/* History table */}
+      {/* Stats table */}
       {!loading && entries.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">History</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Stats</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-2 pr-3 font-semibold text-muted-foreground">Date</th>
-                    {ex.metrics.map((m) => (
-                      <th key={m.key} className="text-left py-2 pr-3 font-semibold text-muted-foreground whitespace-nowrap">
-                        {m.label} ({m.unit})
+                    <th className="text-left py-2 pr-4 font-semibold text-muted-foreground whitespace-nowrap">Date</th>
+                    {mod.metric_labels.map((label) => (
+                      <th key={label} className="text-left py-2 pr-4 font-semibold text-muted-foreground whitespace-nowrap">
+                        {label}
                       </th>
                     ))}
-                    <th className="text-left py-2 pr-3 font-semibold text-muted-foreground">Notes</th>
+                    <th className="text-left py-2 pr-4 font-semibold text-muted-foreground">Notes</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
                   {[...entries].reverse().map((e) => (
-                    <tr key={e.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="py-2 pr-3 font-medium whitespace-nowrap">{fmtDate(e.logged_at)}</td>
-                      {ex.metrics.map((m) => (
-                        <td key={m.key} className="py-2 pr-3 tabular-nums">
-                          {e.metrics[m.key] !== undefined ? e.metrics[m.key] : '-'}
+                    <tr key={e.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="py-2 pr-4 font-medium whitespace-nowrap">{fmtDate(e.logged_at)}</td>
+                      {mod.metric_labels.map((_, i) => (
+                        <td key={i} className="py-2 pr-4 tabular-nums">
+                          {e.metric_values[i] !== null && e.metric_values[i] !== undefined
+                            ? e.metric_values[i]
+                            : '-'}
                         </td>
                       ))}
-                      <td className="py-2 pr-3 text-muted-foreground max-w-[120px] truncate">{e.notes || '-'}</td>
+                      <td className="py-2 pr-4 text-muted-foreground max-w-[100px] truncate">
+                        {e.notes || '-'}
+                      </td>
                       <td className="py-2">
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -357,13 +437,13 @@ function ExerciseDetail({
                             <AlertDialogHeader>
                               <AlertDialogTitle>Delete entry?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This will permanently remove this log entry.
+                                This log entry will be permanently removed.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
-                                onClick={() => handleDelete(e.id)}
+                                onClick={() => handleDeleteEntry(e.id)}
                                 className="bg-destructive text-destructive-foreground"
                               >
                                 Delete
@@ -381,93 +461,182 @@ function ExerciseDetail({
         </Card>
       )}
 
-      {/* Progress chart - only shown with 2+ entries */}
+      {/* Progress chart - 2+ entries only */}
       {!loading && entries.length >= 2 && (
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" /> Progress Chart
+              <TrendingUp className="h-4 w-4 text-primary" /> Progress
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {ex.metrics.map((m, idx) => {
-                const hasData = chartData.some((d) => d[m.key] !== undefined);
-                if (!hasData) return null;
-                return (
-                  <div key={m.key}>
-                    <p className="text-xs font-semibold text-muted-foreground mb-2">
-                      {m.label} ({m.unit})
-                    </p>
-                    <ResponsiveContainer width="100%" height={160}>
-                      <LineChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fontSize: 10 }}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 10 }}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            fontSize: 12,
-                            borderRadius: 8,
-                            border: '1px solid hsl(var(--border))',
-                            background: 'hsl(var(--card))',
-                          }}
-                          formatter={(v: any) => [v + ' ' + m.unit, m.label]}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey={m.key}
-                          stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                          strokeWidth={2}
-                          dot={{ r: 3 }}
-                          activeDot={{ r: 5 }}
-                          connectNulls
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                );
-              })}
-            </div>
+          <CardContent className="space-y-6">
+            {mod.metric_labels.map((label, idx) => {
+              const hasData = chartData.some((d) => d[label] !== undefined);
+              if (!hasData) return null;
+              return (
+                <div key={label}>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">{label}</p>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <LineChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="date" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                      <Tooltip
+                        contentStyle={{
+                          fontSize: 12,
+                          borderRadius: 8,
+                          border: '1px solid hsl(var(--border))',
+                          background: 'hsl(var(--card))',
+                        }}
+                        formatter={(v: any) => [v, label]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={label}
+                        stroke={COLORS[idx % COLORS.length]}
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        activeDot={{ r: 5 }}
+                        connectNulls
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}
 
       {!loading && entries.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          <TrendingUp className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-medium">No entries yet</p>
-          <p className="text-xs mt-1 opacity-70">Log your first {ex.label.toLowerCase()} session above</p>
+        <div className="text-center py-10 text-muted-foreground">
+          <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No entries yet - log your first session above</p>
         </div>
       )}
     </div>
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ProgressTracker() {
-  const [selected, setSelected] = useState<ExerciseKey | null>(null);
+  const { user } = useAuth();
+  const { toast } = useToast();
 
+  const [modules, setModules] = useState<TrackerModule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [selected, setSelected] = useState<TrackerModule | null>(null);
+
+  const fetchModules = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    const { data } = await supabase
+      .from('tracker_modules')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true });
+    if (data) setModules(data as TrackerModule[]);
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => { fetchModules(); }, [fetchModules]);
+
+  const handleCreate = async (mod: Omit<TrackerModule, 'id' | 'user_id' | 'created_at'>) => {
+    if (!user) return;
+    const { error } = await supabase.from('tracker_modules').insert({ ...mod, user_id: user.id });
+    if (error) {
+      toast({ title: 'Error creating', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: mod.exercise_label + ' added!' });
+      setShowModal(false);
+      fetchModules();
+    }
+  };
+
+  const handleDeleteModule = async (mod: TrackerModule) => {
+    await supabase.from('progress_entries').delete().eq('module_id', mod.id);
+    const { error } = await supabase.from('tracker_modules').delete().eq('id', mod.id);
+    if (error) {
+      toast({ title: 'Error deleting', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Exercise removed' });
+      setSelected(null);
+      fetchModules();
+    }
+  };
+
+  // ── Detail view ─────────────────────────────────────────────────────────────
   if (selected) {
     return (
       <div className="max-w-2xl mx-auto">
-        <ExerciseDetail exerciseKey={selected} onBack={() => setSelected(null)} />
+        <ExerciseDetail
+          mod={selected}
+          onBack={() => setSelected(null)}
+          onDelete={() => handleDeleteModule(selected)}
+        />
       </div>
     );
   }
 
+  // ── Module menu ─────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-2xl mx-auto">
-      <ModuleMenu onSelect={setSelected} />
+    <div className="max-w-2xl mx-auto space-y-5 pb-10">
+
+      <div className="flex items-center gap-3">
+        <TrendingUp className="h-7 w-7 text-primary" />
+        <h1 className="text-2xl font-bold text-foreground">Progress Tracker</h1>
+      </div>
+
+      {!loading && modules.length === 0 ? (
+        // Empty state
+        <div className="flex flex-col items-center justify-center py-24 gap-6">
+          <div className="text-center text-muted-foreground">
+            <TrendingUp className="h-14 w-14 mx-auto mb-4 opacity-20" />
+            <p className="text-base font-medium">No exercises yet</p>
+            <p className="text-sm mt-1 opacity-70">Add an exercise to start tracking your progress</p>
+          </div>
+          <Button size="lg" className="px-8 text-base h-12" onClick={() => setShowModal(true)}>
+            <Plus className="h-5 w-5 mr-2" /> Add Exercise
+          </Button>
+        </div>
+      ) : (
+        // Module grid
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3">
+            {modules.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setSelected(m)}
+                className="flex items-center justify-between rounded-xl border bg-card px-4 py-4 text-left hover:bg-muted/40 transition-colors shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{m.emoji}</span>
+                  <div>
+                    <p className="font-semibold text-sm">{m.exercise_label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {m.metric_labels.join(' · ')}
+                    </p>
+                  </div>
+                </div>
+                <TrendingUp className="h-4 w-4 text-muted-foreground shrink-0" />
+              </button>
+            ))}
+          </div>
+
+          <Button variant="outline" className="w-full" onClick={() => setShowModal(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Add Exercise
+          </Button>
+        </div>
+      )}
+
+      {showModal && (
+        <AddExerciseModal
+          onClose={() => setShowModal(false)}
+          onCreate={handleCreate}
+        />
+      )}
     </div>
   );
 }
