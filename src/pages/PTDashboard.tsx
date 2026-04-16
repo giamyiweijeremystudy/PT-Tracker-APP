@@ -75,7 +75,14 @@ const typeColors: Record<string,string> = {
 };
 
 const quickActions = [
-  { label: 'Calculators', to: '/calculators', icon: '🧮' },
+  { label: 'Log Activity',     to: '/activities',  icon: Activity,     color: 'text-green-500'  },
+  { label: 'Calculators',      to: '/calculators', icon: Calculator,   color: 'text-blue-500'   },
+  { label: 'My Team',          to: '/teams',       icon: Users,        color: 'text-violet-500' },
+  { label: 'Schedule',         to: '/schedule',    icon: CalendarDays, color: 'text-orange-500' },
+  { label: 'Programs',         to: '/programs',    icon: BookMarked,   color: 'text-pink-500'   },
+  { label: 'Progress Tracker', to: '/progress',    icon: TrendingUp,   color: 'text-teal-500'   },
+  { label: 'Useful Info',      to: '/useful-info', icon: BookOpen,     color: 'text-yellow-500' },
+  { label: 'PT Assistant',     to: '/chat',        icon: MessageSquare,color: 'text-primary'    },
 ];
 
 export default function PTDashboard() {
@@ -111,18 +118,18 @@ export default function PTDashboard() {
         <p className="text-muted-foreground">Here's your fitness overview for today</p>
       </div>
 
-      {/* Quick Actions — top on mobile */}
+      {/* Quick Actions */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base"><Calculator className="h-5 w-5" /> Quick Actions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {quickActions.map(a => (
               <Link key={a.label} to={a.to}>
-                <div className="rounded-xl border p-2.5 text-center hover:bg-muted/50 active:scale-95 transition-all cursor-pointer">
-                  <div className="text-xl mb-1">{a.icon}</div>
-                  <div className="text-[10px] font-medium text-foreground leading-tight">{a.label}</div>
+                <div className="rounded-xl border p-3 flex flex-col items-center gap-1.5 hover:bg-muted/50 active:scale-95 transition-all cursor-pointer">
+                  <a.icon className={"h-5 w-5 " + a.color} />
+                  <div className="text-[10px] font-medium text-foreground leading-tight text-center">{a.label}</div>
                 </div>
               </Link>
             ))}
@@ -130,7 +137,7 @@ export default function PTDashboard() {
         </CardContent>
       </Card>
 
-      {/* IPPT Stats — live from profile */}
+      {/* IPPT Stats - live from profile */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Link to="/ippt">
           <Card className="hover:shadow-md transition-shadow cursor-pointer">
@@ -140,7 +147,7 @@ export default function PTDashboard() {
                 <span className="text-xs text-muted-foreground">IPPT Score</span>
               </div>
               <div className={`text-2xl font-bold ${ipptAward ? AWARD_COLOR[ipptAward] : 'text-foreground'}`}>
-                {ipptScore ?? '—'}
+                {ipptScore ?? '-'}
               </div>
               <div className="text-xs text-muted-foreground">{ipptAward ?? 'Not set'}</div>
             </CardContent>
@@ -154,7 +161,7 @@ export default function PTDashboard() {
                 <Timer className="h-5 w-5 text-primary" />
                 <span className="text-xs text-muted-foreground">2.4km Run</span>
               </div>
-              <div className="text-2xl font-bold text-foreground">{runTime ?? '—'}</div>
+              <div className="text-2xl font-bold text-foreground">{runTime ?? '-'}</div>
               <div className="text-xs text-muted-foreground">Official IPPT</div>
             </CardContent>
           </Card>
@@ -167,7 +174,7 @@ export default function PTDashboard() {
                 <Dumbbell className="h-5 w-5 text-primary" />
                 <span className="text-xs text-muted-foreground">Push-ups</span>
               </div>
-              <div className="text-2xl font-bold text-foreground">{pushups ?? '—'}</div>
+              <div className="text-2xl font-bold text-foreground">{pushups ?? '-'}</div>
               <div className="text-xs text-muted-foreground">Official IPPT</div>
             </CardContent>
           </Card>
@@ -180,7 +187,7 @@ export default function PTDashboard() {
                 <ClipboardCheck className="h-5 w-5 text-green-500" />
                 <span className="text-xs text-muted-foreground">Attendance</span>
               </div>
-              <div className="text-2xl font-bold text-foreground">—</div>
+              <div className="text-2xl font-bold text-foreground">-</div>
               <div className="text-xs text-muted-foreground">This month</div>
             </CardContent>
           </Card>
