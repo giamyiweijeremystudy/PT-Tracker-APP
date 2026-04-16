@@ -1,21 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from ‘react’;
 import { useAuth } from ‘@/hooks/useAuth’;
 import { supabase } from ‘@/integrations/supabase/client’;
+import { useTeam } from ‘@/contexts/TeamContext’;
 import { Card, CardContent, CardHeader, CardTitle } from ‘@/components/ui/card’;
 import { Button } from ‘@/components/ui/button’;
 import { Input } from ‘@/components/ui/input’;
 import { Label } from ‘@/components/ui/label’;
 import { Textarea } from ‘@/components/ui/textarea’;
+import { Checkbox } from ‘@/components/ui/checkbox’;
 import { useToast } from ‘@/hooks/use-toast’;
 import {
 AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
 AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from ‘@/components/ui/alert-dialog’;
 import { Info, Plus, Pencil, Trash2, X, Save, Upload, ChevronDown, ChevronUp, Image, ExternalLink, Lock } from ‘lucide-react’;
-import { useTeam } from ‘@/contexts/TeamContext’;
-import { Checkbox } from ‘@/components/ui/checkbox’;
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface InfoModule {
 id: string;
@@ -28,8 +26,6 @@ is_spartan_only: boolean;
 created_at: string;
 updated_at: string;
 }
-
-// ─── Linkify helper — turns URLs in text into clickable links ─────────────────
 
 function Linkify({ text }: { text: string }) {
 const URL_RE = /(https?://[^\s]+)/g;
@@ -56,31 +52,31 @@ className="text-primary underline underline-offset-2 hover:opacity-80 inline-fle
 );
 }
 
-// ─── Empty form ───────────────────────────────────────────────────────────────
-
 const emptyForm = () => ({ title: ‘’, content: ‘’, isSpartanOnly: false });
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function UsefulInfo() {
 const { user, profile } = useAuth();
 const { toast } = useToast();
-const isAdmin = (profile as any)?.is_admin === true;
 const { myTeamRole } = useTeam();
-const isSpartan = isAdmin || Array.isArray(myTeamRole) && (myTeamRole.includes(‘spartan’) || myTeamRole.includes(‘admin’) || myTeamRole.includes(‘pt_ic’));
 
-const [modules, setModules]       = useState<InfoModule[]>([]);
-const [loading, setLoading]       = useState(true);
-const [expanded, setExpanded]     = useState<string | null>(null);
-const [showForm, setShowForm]     = useState(false);
-const [editingId, setEditingId]   = useState<string | null>(null);
-const [form, setForm]             = useState(emptyForm());
-const [saving, setSaving]         = useState(false);
+const isAdmin = (profile as any)?.is_admin === true;
+const isSpartan =
+isAdmin ||
+(Array.isArray(myTeamRole) &&
+(myTeamRole.includes(‘spartan’) ||
+myTeamRole.includes(‘admin’) ||
+myTeamRole.includes(‘pt_ic’)));
+
+const [modules, setModules] = useState<InfoModule[]>([]);
+const [loading, setLoading] = useState(true);
+const [expanded, setExpanded] = useState<string | null>(null);
+const [showForm, setShowForm] = useState(false);
+const [editingId, setEditingId] = useState<string | null>(null);
+const [form, setForm] = useState(emptyForm());
+const [saving, setSaving] = useState(false);
 const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
-const [formImages, setFormImages] = useState<string[]>([]);   // URLs for current form
+const [formImages, setFormImages] = useState<string[]>([]);
 const fileInputRef = useRef<HTMLInputElement>(null);
-
-// ── Fetch ─────────────────────────────────────────────────────────────────
 
 const fetchModules = useCallback(async () => {
 setLoading(true);
@@ -89,18 +85,17 @@ const { data } = await supabase
 .select(’*’)
 .order(‘position’, { ascending: true });
 if (data) {
-// Non-spartan/non-admin members cannot see spartan-only modules
-const visible = (data as InfoModule[]).filter(m =>
-!m.is_spartan_only || isSpartan
+const visible = (data as InfoModule[]).filter(
+(m) => !m.is_spartan_only || isSpartan
 );
 setModules(visible);
 }
 setLoading(false);
-}, []);
+}, [isSpartan]);
 
-useEffect(() => { fetchModules(); }, [fetchModules]);
-
-// ── Form helpers ──────────────────────────────────────────────────────────
+useEffect(() => {
+fetchModules();
+}, [fetchModules]);
 
 const openCreate = () => {
 setEditingId(null);
@@ -124,91 +119,78 @@ setForm(emptyForm());
 setFormImages([]);
 };
 
-// ── Image upload ──────────────────────────────────────────────────────────
-
 const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 const files = Array.from(e.target.files ?? []);
 if (!files.length || !user) return;
-
-```
 for (const file of files) {
-  if (!file.type.startsWith('image/')) {
-    toast({ title: 'Only image files are supported', variant: 'destructive' });
-    continue;
-  }
-  const idx = formImages.length;
-  setUploadingIdx(idx);
-  const ext = file.name.split('.').pop();
-  const path = `info_modules/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await supabase.storage.from('uploads').upload(path, file, { upsert: false });
-  if (error) {
-    toast({ title: 'Upload failed', description: error.message, variant: 'destructive' });
-    setUploadingIdx(null);
-    continue;
-  }
-  const { data: { publicUrl } } = supabase.storage.from('uploads').getPublicUrl(path);
-  setFormImages(prev => [...prev, publicUrl]);
-  setUploadingIdx(null);
+if (!file.type.startsWith(‘image/’)) {
+toast({ title: ‘Only image files are supported’, variant: ‘destructive’ });
+continue;
 }
-// Reset input so same file can be re-selected
-if (fileInputRef.current) fileInputRef.current.value = '';
-```
-
+setUploadingIdx(formImages.length);
+const ext = file.name.split(’.’).pop();
+const path = ‘info_modules/’ + user.id + ‘/’ + Date.now() + ‘_’ + Math.random().toString(36).slice(2) + ‘.’ + ext;
+const { error } = await supabase.storage.from(‘uploads’).upload(path, file, { upsert: false });
+if (error) {
+toast({ title: ‘Upload failed’, description: error.message, variant: ‘destructive’ });
+setUploadingIdx(null);
+continue;
+}
+const { data: { publicUrl } } = supabase.storage.from(‘uploads’).getPublicUrl(path);
+setFormImages((prev) => […prev, publicUrl]);
+setUploadingIdx(null);
+}
+if (fileInputRef.current) fileInputRef.current.value = ‘’;
 };
 
 const removeImage = (idx: number) => {
-setFormImages(prev => prev.filter((_, i) => i !== idx));
+setFormImages((prev) => prev.filter((_, i) => i !== idx));
 };
-
-// ── Save ──────────────────────────────────────────────────────────────────
 
 const handleSave = async () => {
 if (!form.title.trim()) {
-toast({ title: ‘Title is required’, variant: ‘destructive’ }); return;
+toast({ title: ‘Title is required’, variant: ‘destructive’ });
+return;
 }
 if (!user) return;
 setSaving(true);
-
-```
 if (editingId) {
-  const { error } = await supabase.from('info_modules').update({
-    title: form.title.trim(),
-    content: form.content.trim(),
-    image_urls: formImages,
-    is_spartan_only: form.isSpartanOnly,
-    updated_at: new Date().toISOString(),
-  }).eq('id', editingId);
-  if (error) {
-    toast({ title: 'Error saving', description: error.message, variant: 'destructive' });
-  } else {
-    toast({ title: 'Module updated!' });
-    closeForm();
-    fetchModules();
-  }
+const { error } = await supabase
+.from(‘info_modules’)
+.update({
+title: form.title.trim(),
+content: form.content.trim(),
+image_urls: formImages,
+is_spartan_only: form.isSpartanOnly,
+updated_at: new Date().toISOString(),
+})
+.eq(‘id’, editingId);
+if (error) {
+toast({ title: ‘Error saving’, description: error.message, variant: ‘destructive’ });
 } else {
-  const position = modules.length;
-  const { error } = await supabase.from('info_modules').insert({
-    created_by: user.id,
-    title: form.title.trim(),
-    content: form.content.trim(),
-    image_urls: formImages,
-    is_spartan_only: form.isSpartanOnly,
-    position,
-  });
-  if (error) {
-    toast({ title: 'Error saving', description: error.message, variant: 'destructive' });
-  } else {
-    toast({ title: 'Module created!' });
-    closeForm();
-    fetchModules();
-  }
+toast({ title: ‘Module updated!’ });
+closeForm();
+fetchModules();
+}
+} else {
+const { error } = await supabase.from(‘info_modules’).insert({
+created_by: user.id,
+title: form.title.trim(),
+content: form.content.trim(),
+image_urls: formImages,
+is_spartan_only: form.isSpartanOnly,
+position: modules.length,
+});
+if (error) {
+toast({ title: ‘Error saving’, description: error.message, variant: ‘destructive’ });
+} else {
+toast({ title: ‘Module created!’ });
+closeForm();
+fetchModules();
+}
 }
 setSaving(false);
-```
-
 };
-
-// ── Delete ────────────────────────────────────────────────────────────────
 
 const handleDelete = async (id: string) => {
 const { error } = await supabase.from(‘info_modules’).delete().eq(‘id’, id);
@@ -220,13 +202,10 @@ fetchModules();
 }
 };
 
-// ── Render ────────────────────────────────────────────────────────────────
-
 return (
 <div className="max-w-2xl mx-auto space-y-4 pb-10">
 
 ```
-  {/* Header */}
   <div className="flex items-center justify-between">
     <div className="flex items-center gap-3">
       <Info className="h-7 w-7 text-primary" />
@@ -239,7 +218,6 @@ return (
     )}
   </div>
 
-  {/* Create / Edit form */}
   {showForm && isAdmin && (
     <Card className="border-primary/40">
       <CardHeader className="pb-3 flex flex-row items-center justify-between">
@@ -249,28 +227,30 @@ return (
         </button>
       </CardHeader>
       <CardContent className="space-y-4">
+
         <div className="space-y-1.5">
           <Label>Title</Label>
           <Input
             placeholder="e.g. SAF Fitness Test Standards"
             value={form.title}
-            onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
           />
         </div>
 
         <div className="space-y-1.5">
           <Label>Content</Label>
           <Textarea
-            placeholder="Write anything here — tips, links, standards, notes...&#10;&#10;URLs will automatically become clickable links."
+            placeholder="Write anything here — tips, links, standards, notes..."
             value={form.content}
-            onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
             rows={10}
             className="font-mono text-sm resize-y"
           />
-          <p className="text-xs text-muted-foreground">URLs starting with http:// or https:// will be auto-linked.</p>
+          <p className="text-xs text-muted-foreground">
+            URLs starting with http:// or https:// will become clickable links.
+          </p>
         </div>
 
-        {/* Image upload */}
         <div className="space-y-2">
           <Label>Images <span className="text-muted-foreground text-xs">(optional)</span></Label>
           <input
@@ -291,7 +271,6 @@ return (
             <Upload className="h-4 w-4 mr-2" />
             {uploadingIdx !== null ? 'Uploading...' : 'Upload Images'}
           </Button>
-
           {formImages.length > 0 && (
             <div className="grid grid-cols-2 gap-2 mt-2">
               {formImages.map((url, i) => (
@@ -309,19 +288,23 @@ return (
           )}
         </div>
 
-        {/* Spartan Only toggle */}
         <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/10 px-3 py-2.5">
           <Checkbox
             id="spartan-only"
             checked={form.isSpartanOnly}
-            onCheckedChange={v => setForm(f => ({ ...f, isSpartanOnly: !!v }))}
+            onCheckedChange={(v) => setForm((f) => ({ ...f, isSpartanOnly: !!v }))}
             className="mt-0.5"
           />
           <div>
-            <label htmlFor="spartan-only" className="text-sm font-medium text-red-700 dark:text-red-400 cursor-pointer flex items-center gap-1.5">
+            <label
+              htmlFor="spartan-only"
+              className="text-sm font-medium text-red-700 dark:text-red-400 cursor-pointer flex items-center gap-1.5"
+            >
               <Lock className="h-3.5 w-3.5" /> Spartan Only
             </label>
-            <p className="text-xs text-red-600/70 dark:text-red-400/60 mt-0.5">Only members with the Spartan role can see this module</p>
+            <p className="text-xs text-red-600/70 dark:text-red-400/60 mt-0.5">
+              Only members with the Spartan role can see this module
+            </p>
           </div>
         </div>
 
@@ -336,22 +319,20 @@ return (
     </Card>
   )}
 
-  {/* Module list */}
   {loading ? (
     <div className="text-center py-16 text-muted-foreground text-sm">Loading...</div>
   ) : modules.length === 0 ? (
     <div className="text-center py-16 text-muted-foreground">
       <Info className="h-10 w-10 mx-auto mb-3 opacity-30" />
       <p className="text-sm font-medium">No modules yet</p>
-      {isAdmin && <p className="text-xs mt-1 opacity-70">Click "Add Module" to create one</p>}
+      {isAdmin && <p className="text-xs mt-1 opacity-70">Click Add Module to create one</p>}
     </div>
   ) : (
     <div className="space-y-3">
-      {modules.map(m => {
+      {modules.map((m) => {
         const isOpen = expanded === m.id;
         return (
           <div key={m.id} className="rounded-xl border bg-card overflow-hidden shadow-sm">
-            {/* Module header — always visible */}
             <button
               className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-muted/40 transition-colors"
               onClick={() => setExpanded(isOpen ? null : m.id)}
@@ -369,7 +350,7 @@ return (
                 {isAdmin && (
                   <>
                     <button
-                      onClick={e => { e.stopPropagation(); openEdit(m); }}
+                      onClick={(e) => { e.stopPropagation(); openEdit(m); }}
                       className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -377,7 +358,7 @@ return (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <button
-                          onClick={e => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
                           className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -387,7 +368,7 @@ return (
                         <AlertDialogHeader>
                           <AlertDialogTitle>Delete module?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            "{m.title}" will be permanently removed.
+                            This will permanently remove this module.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -410,17 +391,13 @@ return (
               </div>
             </button>
 
-            {/* Expanded content */}
             {isOpen && (
               <div className="px-4 pb-4 space-y-4 border-t pt-3">
-                {/* Text content with auto-linked URLs */}
                 {m.content && (
                   <p className="text-sm leading-relaxed text-foreground">
                     <Linkify text={m.content} />
                   </p>
                 )}
-
-                {/* Images */}
                 {m.image_urls?.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
