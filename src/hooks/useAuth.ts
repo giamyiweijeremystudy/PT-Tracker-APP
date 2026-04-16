@@ -1,7 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
-import type { AppRole, Profile } from '@/lib/types';
+
+export type AppRole = 'employee' | 'manager' | 'finance';
+
+export interface Profile {
+  id: string;
+  full_name: string;
+  rank: string;
+  department: string;
+  manager_id: string | null;
+  age?: number;
+  height_cm?: number;
+  ippt_pushups?: number;
+  ippt_situps?: number;
+  ippt_run_seconds?: number;
+  ippt_score?: number;
+  is_admin?: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
