@@ -18,6 +18,7 @@ import PTSettings from "./pages/PTSettings";
 import Schedule from "./pages/Schedule";
 import Chat from "./pages/Chat";
 import TrainingProgrammes from "./pages/TrainingProgrammes";
+import UsefulInfo from "./pages/UsefulInfo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
             <Route path="/settings"         element={<P><PTSettings /></P>} />
             <Route path="/schedule"         element={<P><Schedule /></P>} />
             <Route path="/programs"        element={<P><TrainingProgrammes /></P>} />
+            <Route path="/useful-info"       element={<P><UsefulInfo /></P>} />
             <Route path="/chat"            element={<P><Chat /></P>} />
             <Route path="*"                 element={<NotFound />} />
           </Routes>
