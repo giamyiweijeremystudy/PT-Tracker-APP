@@ -817,12 +817,12 @@ export default function Teams() {
   const firstDayOfWeek = getFirstDayOfWeek(calYear, calMonth);
   const isToday = (d: number) => d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
 
-  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'activities',   label: 'Activities',  icon: <Activity className="h-3.5 w-3.5 mr-1" /> },
-    { id: 'members',      label: 'Members',     icon: <Users className="h-3.5 w-3.5 mr-1" /> },
-    { id: 'submissions',  label: 'Submissions', icon: <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> },
-    { id: 'schedule',     label: 'Schedule',    icon: <Calendar className="h-3.5 w-3.5 mr-1" /> },
-    { id: 'leaderboard',  label: 'Leaderboard', icon: <Trophy className="h-3.5 w-3.5 mr-1" /> },
+  const TABS: { id: Tab; label: string; shortLabel: string; icon: React.ReactNode }[] = [
+    { id: 'activities',   label: 'Activities',  shortLabel: 'Activity',  icon: <Activity className="h-4 w-4" /> },
+    { id: 'members',      label: 'Members',     shortLabel: 'Members',   icon: <Users className="h-4 w-4" /> },
+    { id: 'submissions',  label: 'Submissions', shortLabel: 'Submit',    icon: <CheckCircle2 className="h-4 w-4" /> },
+    { id: 'schedule',     label: 'Schedule',    shortLabel: 'Schedule',  icon: <Calendar className="h-4 w-4" /> },
+    { id: 'leaderboard',  label: 'Leaderboard', shortLabel: 'Ranks',     icon: <Trophy className="h-4 w-4" /> },
   ];
 
   return (
@@ -925,8 +925,9 @@ export default function Teams() {
       <div className="flex rounded-xl border overflow-hidden">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex-1 py-2.5 text-xs font-medium transition-colors flex items-center justify-center ${tab === t.id ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
-            {t.icon}{t.label}
+            className={`flex-1 py-2.5 font-medium transition-colors flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 ${tab === t.id ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+            {t.icon}
+            <span className="text-[10px] sm:text-xs leading-tight">{t.shortLabel}</span>
           </button>
         ))}
       </div>
