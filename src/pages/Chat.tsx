@@ -4,7 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Send, ArrowRight, Loader2, X, RefreshCw } from 'lucide-react';
 import { SUGGESTIONS } from '@/lib/chatIntents';
-import { fetchChatData } from '@/lib/chatDataFetcher';
+import { dynamicSearch } from '@/lib/chatDataFetcher';
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ export default function Chat() {
     setThinking(true);
 
     // Dynamic search across all app data
-    const result = await fetchChatData(text, user!.id);
+    const result = await dynamicSearch(text, user!.id);
 
     setThinking(false);
 
