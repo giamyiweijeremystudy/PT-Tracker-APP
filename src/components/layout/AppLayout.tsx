@@ -1,5 +1,6 @@
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { AppSidebar } from './AppSidebar';
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "./AppSidebar";
+import BottomNav from "./BottomNav";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -11,11 +12,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger className="mr-3 sm:mr-4" />
             <h2 className="text-base sm:text-lg font-semibold text-foreground">PT App</h2>
           </header>
-          <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto">
+          <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto pb-20 sm:pb-6">
             {children}
           </main>
         </div>
       </div>
+      <BottomNav />
     </SidebarProvider>
   );
 }
