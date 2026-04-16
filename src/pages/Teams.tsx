@@ -1518,95 +1518,112 @@ export default function Teams() {
             )}
 
             {/* ── All Team Submissions (all members) ── */}
-            <div className="space-y-3 pt-2 border-t mt-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <Users2 className="h-3.5 w-3.5" /> All Team Submissions
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="text-xs h-7"
-                    onClick={() => { setSubmissionPopupDate(todayStr); setSubmissionPopupOpen(true); }}
-                    title="View parade state">
-                    <FileText className="h-3 w-3 mr-1" /> State
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('txt', todayStr)}>
-                    <FileText className="h-3 w-3 mr-1" /> .txt
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv', todayStr)}>
-                    <Download className="h-3 w-3 mr-1" /> .csv
-                  </Button>
-                </div>
-              </div>
+            {(() => {
+              // Available dates for the dropdown — all dates that have any submission, plus today
+              const availableDates = [...new Set([todayStr, ...submissionDates])].sort((a,b) => b.localeCompare(a));
+              // Selected date defaults to today; use submissionPopupDate as the filter state
+              const viewDate = submissionPopupDate;
+              const daySubmissions = allSubmissions.filter(s => s.submission_date === viewDate);
+              const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
 
-              {submissionDates.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-4">No submissions yet</p>
-              ) : (
-                submissionDates.map(date => {
-                  const daySubmissions = allSubmissions.filter(s => s.submission_date === date);
-                  const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
-                  return (
-                    <div key={date} className="rounded-xl border bg-card overflow-hidden">
-                      {/* Date header */}
-                      <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b">
-                        <span className="text-xs font-semibold">{fmtDate(date, { weekday: true })}</span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground">{daySubmissions.length}/{members.length}</span>
-                          <button
-                            onClick={() => { setSubmissionPopupDate(date); setSubmissionPopupOpen(true); }}
-                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                            title="View parade state">
-                            <FileText className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => downloadSubmissions('csv', date)} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Download CSV">
-                            <Download className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Submitted */}
-                      <div className="divide-y">
-                        {daySubmissions.map(s => {
-                          const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
-                          return (
-                            <div key={s.id} className="flex items-start justify-between gap-2 px-3 py-2">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs font-medium">{name}</span>
-                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
-                                  <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
-                                </div>
-                                {s.session_type === 'SFT' && s.sft_type && (
-                                  <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
-                                )}
-                                {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
-                              </div>
-                              {s.temperature && <span className="text-xs text-muted-foreground shrink-0">{s.temperature}°C</span>}
-                            </div>
-                          );
-                        })}
-
-                        {/* Not submitted */}
-                        {notSub.length > 0 && (
-                          <div className="px-3 py-2 bg-red-50/50 dark:bg-red-900/10">
-                            <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1.5">❌ Not Submitted ({notSub.length})</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {notSub.map(m => {
-                                const p = m.profile;
-                                return (
-                                  <span key={m.user_id} className="text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full px-2 py-0.5">
-                                    {p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}{p?.full_name ?? 'Member'}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
+              return (
+                <div className="space-y-3 pt-2 border-t mt-2">
+                  {/* Header row: title + date dropdown + action buttons */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <Users2 className="h-3.5 w-3.5" /> All Team Submissions
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Select value={viewDate} onValueChange={setSubmissionPopupDate}>
+                        <SelectTrigger className="h-7 text-xs w-36">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableDates.map(d => (
+                            <SelectItem key={d} value={d} className="text-xs">
+                              {d === todayStr ? `Today (${fmtDate(d)})` : fmtDate(d, { weekday: true })}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <button
+                        onClick={() => setSubmissionPopupOpen(true)}
+                        className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                        title="View parade state text">
+                        <FileText className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => downloadSubmissions('txt', viewDate)} className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Download .txt">
+                        <FileText className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => downloadSubmissions('csv', viewDate)} className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Download .csv">
+                        <Download className="h-3.5 w-3.5" />
+                      </button>
                     </div>
-                  );
-                })
-              )}
-            </div>
+                  </div>
+
+                  {/* Submission count summary */}
+                  <p className="text-xs text-muted-foreground">
+                    {daySubmissions.length} of {members.length} submitted
+                  </p>
+
+                  <div className="rounded-xl border bg-card overflow-hidden divide-y">
+                    {/* Submitted section header */}
+                    <div className="px-3 py-2 bg-green-50/60 dark:bg-green-900/10">
+                      <p className="text-xs font-semibold text-green-700 dark:text-green-400">
+                        ✅ Submitted ({daySubmissions.length})
+                      </p>
+                    </div>
+
+                    {daySubmissions.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-muted-foreground italic">No submissions for this date</div>
+                    ) : (
+                      daySubmissions.map(s => {
+                        const name = s.profile
+                          ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ' : ''}${s.profile.full_name}`
+                          : 'Member';
+                        return (
+                          <div key={s.id} className="flex items-start justify-between gap-2 px-3 py-2.5">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-medium">{name}</span>
+                                <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
+                                <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
+                              </div>
+                              {s.session_type === 'SFT' && s.sft_type && (
+                                <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
+                              )}
+                              {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
+                            </div>
+                            {s.temperature && <span className="text-xs text-muted-foreground shrink-0">{s.temperature}°C</span>}
+                          </div>
+                        );
+                      })
+                    )}
+
+                    {/* Not submitted section header */}
+                    <div className="px-3 py-2 bg-red-50/60 dark:bg-red-900/10">
+                      <p className="text-xs font-semibold text-red-600 dark:text-red-400">
+                        ❌ Not Submitted ({notSub.length})
+                      </p>
+                    </div>
+
+                    {notSub.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-muted-foreground italic">All members have submitted</div>
+                    ) : (
+                      notSub.map(m => {
+                        const p = m.profile;
+                        const name = `${p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}${p?.full_name ?? 'Member'}`;
+                        return (
+                          <div key={m.user_id} className="px-3 py-2.5">
+                            <span className="text-xs font-medium text-muted-foreground">{name}</span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
