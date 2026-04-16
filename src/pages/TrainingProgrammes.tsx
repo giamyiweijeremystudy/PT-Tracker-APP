@@ -624,149 +624,105 @@ export default function TrainingProgrammes() {
       {/* Import Modal */}
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowImport(false)}>
-          <div className="relative w-full max-w-md h-[520px] bg-background rounded-2xl shadow-xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
-              <div className="flex items-center gap-2">
-                <FileJson className="h-5 w-5 text-primary" />
-                <h2 className="text-base font-semibold">Import Program</h2>
-              </div>
-              <button onClick={() => setShowImport(false)} className="p-1 rounded hover:bg-muted text-muted-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4 overflow-y-auto flex-1">
-              <p className="text-sm text-muted-foreground">Paste JSON below or upload a <code className="text-xs bg-muted px-1 py-0.5 rounded">.json</code> file. Accepts a single program object or an array of programs.</p>
+          <div className="w-full max-w-md h-[520px] bg-background rounded-2xl shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
 
-              {/* Format reference — opens full-screen view */}
-              <button onClick={() => setShowFormat(true)}
-                className="text-xs text-primary hover:underline flex items-center gap-1">
-                <FileJson className="h-3.5 w-3.5" /> View expected JSON format
-              </button>
-
-              {/* File upload */}
-              <div>
-                <label className="flex items-center gap-2 text-sm cursor-pointer text-primary hover:underline">
-                  <Upload className="h-4 w-4" />
-                  Upload .json file
-                  <input type="file" accept=".json,application/json" className="hidden" onChange={handleImportFile} />
-                </label>
-              </div>
-
-              {/* Paste area */}
-              <div className="space-y-1.5">
-                <p className="text-xs text-muted-foreground font-medium">Or paste JSON here:</p>
-                <Textarea
-                  placeholder='{ "title": "My Program", ... }'
-                  value={importText}
-                  onChange={e => { setImportText(e.target.value); setImportError(''); }}
-                  rows={8}
-                  className="text-xs font-mono resize-y"
-                />
-              </div>
-
-              {importError && (
-                <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2">
-                  <p className="text-xs text-destructive font-medium whitespace-pre-wrap">{importError}</p>
+            {/* ── Import view ── */}
+            {!showFormat && <>
+              <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b shrink-0">
+                <div className="flex items-center gap-2">
+                  <FileJson className="h-5 w-5 text-primary" />
+                  <h2 className="text-base font-semibold">Import Program</h2>
                 </div>
-              )}
+                <button onClick={() => setShowImport(false)} className="p-1 rounded hover:bg-muted text-muted-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                <p className="text-sm text-muted-foreground">Paste JSON or upload a <code className="text-xs bg-muted px-1 py-0.5 rounded">.json</code> file. Single object or array accepted.</p>
+                <button onClick={() => setShowFormat(true)} className="text-xs text-primary hover:underline flex items-center gap-1">
+                  <FileJson className="h-3.5 w-3.5" /> View expected JSON format
+                </button>
+                <div>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer text-primary hover:underline">
+                    <Upload className="h-4 w-4" />
+                    Upload .json file
+                    <input type="file" accept=".json,application/json" className="hidden" onChange={handleImportFile} />
+                  </label>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground font-medium">Or paste JSON here:</p>
+                  <Textarea
+                    placeholder='{ "title": "My Program", ... }'
+                    value={importText}
+                    onChange={e => { setImportText(e.target.value); setImportError(''); }}
+                    rows={7}
+                    className="text-xs font-mono resize-none"
+                  />
+                </div>
+                {importError && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2">
+                    <p className="text-xs text-destructive font-medium whitespace-pre-wrap">{importError}</p>
+                  </div>
+                )}
+                <Button onClick={handleImport} disabled={!importText.trim()} className="w-full">
+                  <Upload className="h-4 w-4 mr-2" /> Import Program
+                </Button>
+              </div>
+            </>}
 
-              <Button onClick={handleImport} disabled={!importText.trim()} className="w-full">
-                <Upload className="h-4 w-4 mr-2" /> Import Program
-              </Button>
-            </div>
-          </div>
-
-          {/* Format view — full overlay */}
-          {showFormat && (
-            <div className="absolute inset-0 bg-background rounded-2xl overflow-y-auto z-10 flex flex-col">
-              <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b sticky top-0 bg-background">
-                <button onClick={() => setShowFormat(false)}
-                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            {/* ── Format view ── */}
+            {showFormat && <>
+              <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b shrink-0">
+                <button onClick={() => setShowFormat(false)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
                   ← Back
                 </button>
                 <h3 className="text-sm font-semibold">Expected JSON Format</h3>
               </div>
-              <div className="p-5 space-y-4 text-xs">
-                <p className="text-muted-foreground">Paste or upload a <code className="bg-muted px-1 py-0.5 rounded">.json</code> file matching this structure. You can import a single program object or an array <code className="bg-muted px-1 py-0.5 rounded">[ ]</code> of programs.</p>
-                <pre className="bg-muted rounded-xl p-4 text-xs leading-relaxed overflow-x-auto whitespace-pre font-mono">{`{
+              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+                <p className="text-muted-foreground">Single object or array <code className="bg-muted px-1 py-0.5 rounded">[ ]</code> of programs.</p>
+                <pre className="bg-muted rounded-xl p-3 text-xs leading-relaxed overflow-x-auto whitespace-pre font-mono">{`{
   "title": "My Program",
-  "subtitle": "Optional short description",
+  "subtitle": "Optional",
   "category": "Running",
   "difficulty": "Beginner",
   "duration": "8 weeks",
-  "frequency": "4×/week",
-  "goal": "Run 5km without stopping",
-  "modules": [
-    {
-      "label": "Weeks 1–2",
-      "focus": "Base Building",
-      "sessions": [
-        {
-          "name": "Day A — Easy Run",
-          "exercises": [
-            { "text": "5 min brisk walk warm-up" },
-            { "text": "8× (1 min run / 2 min walk)" },
-            { "text": "5 min cool-down walk" }
-          ]
-        },
-        {
-          "name": "Day B — Strength",
-          "exercises": [
-            { "text": "3×15 push-ups" },
-            { "text": "3×20 sit-ups" },
-            { "text": "Plank 3×30s" }
-          ]
-        }
-      ],
-      "tips": [
-        "Run at a conversational pace",
-        "Sleep 7–8 hrs for recovery"
+  "frequency": "4x/week",
+  "goal": "Run 5km",
+  "modules": [{
+    "label": "Weeks 1-2",
+    "focus": "Base Building",
+    "sessions": [{
+      "name": "Day A",
+      "exercises": [
+        { "text": "5 min warm-up walk" },
+        { "text": "8x (1 min run / 2 min walk)" }
       ]
-    },
-    {
-      "label": "Weeks 3–4",
-      "focus": "Progressive Overload",
-      "sessions": [
-        {
-          "name": "Continuous Run",
-          "exercises": [
-            { "text": "25 min easy continuous jog" }
-          ]
-        }
-      ],
-      "tips": []
-    }
-  ]
+    }],
+    "tips": ["Run at conversational pace"]
+  }]
 }`}</pre>
-
-                <div className="space-y-2">
-                  <p className="font-semibold text-foreground">Field reference</p>
+                <div className="space-y-1.5">
+                  <p className="font-semibold text-foreground">Fields</p>
                   {[
-                    ['title',      'string',  'Required. Program name.'],
-                    ['subtitle',   'string',  'Optional. Short tagline.'],
-                    ['category',   'string',  'e.g. IPPT, Running, Strength, Swimming, SFT, Home, Gym, Other'],
-                    ['difficulty', 'string',  'Must be: Beginner | Intermediate | Advanced'],
-                    ['duration',   'string',  'e.g. "8 weeks", "4 sessions"'],
-                    ['frequency',  'string',  'e.g. "4×/week", "Daily"'],
-                    ['goal',       'string',  'Optional. One-line target outcome.'],
-                    ['modules',    'array',   'List of training blocks (weeks, phases, days).'],
-                    ['label',      'string',  'Module heading, e.g. "Weeks 1–2" or "Push Day"'],
-                    ['focus',      'string',  'Module theme, e.g. "Base Building"'],
-                    ['sessions',   'array',   'Training sessions within the module.'],
-                    ['name',       'string',  'Session name, e.g. "Day A – Easy Run"'],
-                    ['exercises',  'array',   'List of { "text": "..." } objects — one per instruction line.'],
-                    ['tips',       'array',   'Optional coach tips as plain strings.'],
-                  ].map(([field, type, desc]) => (
-                    <div key={field} className="flex gap-2 border-b pb-1.5 last:border-0">
-                      <code className="text-primary font-mono w-24 shrink-0">{field}</code>
-                      <span className="text-muted-foreground w-16 shrink-0">{type}</span>
-                      <span className="text-foreground">{desc}</span>
+                    ['title',      'Required. Program name.'],
+                    ['category',   'IPPT, Running, Strength, Swimming, SFT, Home, Gym, Other'],
+                    ['difficulty', 'Beginner | Intermediate | Advanced'],
+                    ['duration',   'e.g. "8 weeks"'],
+                    ['frequency',  'e.g. "4x/week"'],
+                    ['modules',    'Array of training blocks'],
+                    ['exercises',  'Array of { "text": "..." } per session'],
+                    ['tips',       'Array of strings (optional)'],
+                  ].map(([field, desc]) => (
+                    <div key={field} className="flex gap-2 border-b pb-1 last:border-0">
+                      <code className="text-primary font-mono w-20 shrink-0">{field}</code>
+                      <span className="text-muted-foreground">{desc}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
-          )}
+            </>}
+
+          </div>
         </div>
       )}
     </div>
