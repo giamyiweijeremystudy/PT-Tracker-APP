@@ -27,7 +27,6 @@ const PRESETS = [
   { value: 'calisthenics',      label: 'Calisthenics',      emoji: '🤸' },
   { value: 'walking',           label: 'Walking',           emoji: '🚶' },
   { value: 'jogging',           label: 'Jogging',           emoji: '👟' },
-  { value: 'others',            label: 'Others',            emoji: '➕' },
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
