@@ -27,6 +27,21 @@ const DONUT_COLORS = [
   'hsl(280, 67%, 55%)',
 ];
 
+
+// ─── DD/MM/YYYY date formatter ───────────────────────────────────────────────
+function fmtDate(dateStr: string, opts?: { weekday?: boolean; year?: boolean }): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const dd = String(d).padStart(2,'0'), mm = String(m).padStart(2,'0');
+  if (opts?.weekday) {
+    const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()];
+    const yr = opts?.year !== false ? ` ${y}` : '';
+    return `${wd}, ${dd}/${mm}${yr}`;
+  }
+  if (opts?.year === false) return `${dd}/${mm}`;
+  return `${dd}/${mm}/${y}`;
+}
+
 export default function Dashboard() {
   const { user, profile } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -254,7 +269,7 @@ export default function Dashboard() {
                           <StatusBadge status={exp.status as ExpenseStatus} />
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{exp.merchant || '—'} · {new Date(exp.expense_date).toLocaleDateString()}</span>
+                          <span>{exp.merchant || '—'} · {fmtDate(exp.expense_date)}</span>
                           <span className="font-bold text-foreground text-sm tabular-nums">${Number(exp.amount).toFixed(2)}</span>
                         </div>
                       </Link>
@@ -281,7 +296,7 @@ export default function Dashboard() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">{exp.merchant || '—'}</TableCell>
                           <TableCell className="font-semibold text-right tabular-nums">${Number(exp.amount).toFixed(2)}</TableCell>
-                          <TableCell className="text-muted-foreground">{new Date(exp.expense_date).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-muted-foreground">{fmtDate(exp.expense_date)}</TableCell>
                           <TableCell><StatusBadge status={exp.status as ExpenseStatus} /></TableCell>
                         </TableRow>
                       ))}
