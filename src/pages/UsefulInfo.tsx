@@ -240,7 +240,7 @@ return (
         <div className="space-y-1.5">
           <Label>Content</Label>
           <Textarea
-            placeholder="Write anything here — tips, links, standards, notes..."
+            placeholder="Write anything here - tips, links, standards, notes..."
             value={form.content}
             onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
             rows={10}
