@@ -1485,12 +1485,16 @@ export default function Teams() {
                 {/* Date */}
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <div className="w-full overflow-hidden">
-                    <Input type="date" value={subDate} onChange={e => {
+                  <Input
+                    type="date"
+                    value={subDate}
+                    onChange={e => {
                       setSubDate(e.target.value);
                       setSubEventId('none');
-                    }} className="w-full min-w-0" />
-                  </div>
+                    }}
+                    className="w-full appearance-none"
+                    style={{ colorScheme: 'light' }}
+                  />
                 </div>
 
                 {/* Link to event — only shows events for the selected date */}
