@@ -2247,6 +2247,9 @@ export default function Teams() {
                   }}>
                     <Copy className="h-3 w-3 mr-1" /> Copy
                   </Button>
+                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('txt', submissionPopupDate)}>
+                    <FileText className="h-3 w-3 mr-1" /> TXT
+                  </Button>
                   <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv', submissionPopupDate)}>
                     <Download className="h-3 w-3 mr-1" /> CSV
                   </Button>
