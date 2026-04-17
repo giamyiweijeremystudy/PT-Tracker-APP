@@ -636,31 +636,37 @@ export default function Teams() {
   };
 
   const downloadSubmissions = (fmt: 'txt' | 'csv', filterDate?: string) => {
-    // Members who haven't submitted on filterDate
+    const STATUS_ORDER: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3 };
+    const getName = (s: any) => s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ' : ''}${s.profile.full_name}` : s.user_id;
+    const getMemberName = (m: any) => `${m.profile?.rank && m.profile.rank !== 'Other' ? m.profile.rank+' ' : ''}${m.profile?.full_name ?? 'Member'}`;
+
     const notSubmitted = filterDate
-      ? members.filter(m => !allSubmissions.some(s => s.user_id === m.user_id && s.submission_date === filterDate))
+      ? members
+          .filter(m => !allSubmissions.some(s => s.user_id === m.user_id && s.submission_date === filterDate))
+          .sort((a, b) => getMemberName(a).localeCompare(getMemberName(b)))
       : [];
+    const filtered = filterDate ? allSubmissions.filter(s => s.submission_date === filterDate) : allSubmissions;
+    const sorted = [...filtered].sort((a, b) => {
+      const od = (STATUS_ORDER[a.attendance_status] ?? 99) - (STATUS_ORDER[b.attendance_status] ?? 99);
+      if (od !== 0) return od;
+      return getName(a).localeCompare(getName(b));
+    });
 
     if (fmt === 'txt') {
-      const lines = [`Team Submissions — ${team?.name}`, `Downloaded: ${fmtDate(localDateStr())}`, ''];
+      const lines = [`Team Submissions - ${team?.name}`, `Downloaded: ${fmtDate(localDateStr())}`, ''];
       if (filterDate) lines.push(`Date: ${fmtDate(filterDate)}`, '');
-      const filtered = filterDate ? allSubmissions.filter(s => s.submission_date === filterDate) : allSubmissions;
-      filtered.forEach(s => {
-        const name = s.profile ? `${s.profile.rank ? s.profile.rank + ' ' : ''}${s.profile.full_name}` : s.user_id;
-        lines.push(`${fmtDate(s.submission_date)} | ${name} | ${s.session_type}${s.session_type==='SFT'&&s.sft_type?` (${s.sft_type}${s.sft_custom?'/'+s.sft_custom:''})`:''} | ${s.attendance_status}${s.temperature?` | ${s.temperature}°C`:''}${s.notes?` | ${s.notes}`:''}`);
+      lines.push(`SUBMITTED (${sorted.length})`);
+      sorted.forEach(s => {
+        lines.push(`  ${getName(s)} | ${s.session_type}${s.session_type==='SFT'&&s.sft_type?` (${s.sft_type}${s.sft_custom?'/'+s.sft_custom:''})`:''} | ${s.attendance_status}${s.temperature?` | ${s.temperature}C`:''}${s.notes?` | ${s.notes}`:''}`);
       });
       if (notSubmitted.length > 0) {
-        lines.push('', '─── NOT SUBMITTED ───');
-        notSubmitted.forEach(m => {
-          const p = m.profile;
-          lines.push(`${p?.rank && p.rank !== 'Other' ? p.rank + ' ' : ''}${p?.full_name ?? 'Member'}`);
-        });
+        lines.push('', `NOT SUBMITTED (${notSubmitted.length})`);
+        notSubmitted.forEach(m => lines.push(`  ${getMemberName(m)}`));
       }
       downloadTxt(`submissions_${team?.name?.replace(/\s+/g,'_')}.txt`, lines);
     } else {
       const rows: string[][] = [['Date','Name','Rank','Session','Attendance','SFT Type','Temperature','Notes']];
-      const filtered = filterDate ? allSubmissions.filter(s => s.submission_date === filterDate) : allSubmissions;
-      filtered.forEach(s => {
+      sorted.forEach(s => {
         rows.push([
           fmtDate(s.submission_date),
           s.profile?.full_name ?? s.user_id,
@@ -674,16 +680,13 @@ export default function Teams() {
       });
       if (notSubmitted.length > 0) {
         rows.push(['', '', '', '', '', '', '', '']);
-        rows.push([filterDate ? fmtDate(filterDate) : '', '─── NOT SUBMITTED ───', '', '', '', '', '', '']);
-        notSubmitted.forEach(m => {
-          const p = m.profile;
-          rows.push([
-            filterDate ? fmtDate(filterDate) : '',
-            p?.full_name ?? 'Member',
-            p?.rank ?? '',
-            '', 'Not Submitted', '', '', '',
-          ]);
-        });
+        rows.push([filterDate ? fmtDate(filterDate) : '', 'NOT SUBMITTED', '', '', '', '', '', '']);
+        notSubmitted.forEach(m => rows.push([
+          filterDate ? fmtDate(filterDate) : '',
+          m.profile?.full_name ?? 'Member',
+          m.profile?.rank ?? '',
+          '', 'Not Submitted', '', '', '',
+        ]));
       }
       downloadCsv(`submissions_${team?.name?.replace(/\s+/g,'_')}.csv`, rows);
     }
@@ -719,6 +722,18 @@ export default function Teams() {
 
   const handleSubmission = async () => {
     if (!team || !user) return;
+    // Check for existing submission on this date (GMT+8 enforced by subDate)
+    const { data: existing } = await supabase
+      .from('team_submissions')
+      .select('id')
+      .eq('team_id', team.id)
+      .eq('user_id', user.id)
+      .eq('submission_date', subDate)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      toast({ title: 'Already submitted', description: 'You have already submitted attendance for this date. Edit your existing submission above.', variant: 'destructive' });
+      return;
+    }
     setSubmitting(true);
     const { error } = await supabase.from('team_submissions').insert({
       team_id: team.id, user_id: user.id,
@@ -1665,25 +1680,37 @@ export default function Teams() {
 
             {/* ── All Team Submissions (all members) ── */}
             {(() => {
-              // Available dates for the dropdown — all dates that have any submission, plus today
               const availableDates = [...new Set([todayStr, ...submissionDates])].sort((a,b) => b.localeCompare(a));
-              // Selected date defaults to today; use submissionPopupDate as the filter state
               const viewDate = submissionPopupDate;
               const daySubmissions = allSubmissions.filter(s => s.submission_date === viewDate);
               const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
 
+              // Sort order: Participating → Light Duty → MC → On Leave, then alpha
+              const STATUS_ORDER: Record<string, number> = {
+                'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3,
+              };
+              const getName = (s: typeof daySubmissions[0]) =>
+                s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ' : ''}${s.profile.full_name}` : 'Member';
+              const sortedSubmissions = [...daySubmissions].sort((a, b) => {
+                const od = (STATUS_ORDER[a.attendance_status] ?? 99) - (STATUS_ORDER[b.attendance_status] ?? 99);
+                if (od !== 0) return od;
+                return getName(a).localeCompare(getName(b));
+              });
+              const sortedNotSub = [...notSub].sort((a, b) => {
+                const na = `${a.profile?.rank && a.profile.rank !== 'Other' ? a.profile.rank+' ' : ''}${a.profile?.full_name ?? ''}`;
+                const nb = `${b.profile?.rank && b.profile.rank !== 'Other' ? b.profile.rank+' ' : ''}${b.profile?.full_name ?? ''}`;
+                return na.localeCompare(nb);
+              });
+
               return (
                 <div className="space-y-3 pt-2 border-t mt-2">
-                  {/* Header row: title + date dropdown + action buttons */}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                       <Users2 className="h-3.5 w-3.5" /> All Team Submissions
                     </p>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
                       <Select value={viewDate} onValueChange={setSubmissionPopupDate}>
-                        <SelectTrigger className="h-7 text-xs w-36">
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger className="h-7 text-xs w-36"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {availableDates.map(d => (
                             <SelectItem key={d} value={d} className="text-xs">
@@ -1692,41 +1719,25 @@ export default function Teams() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <button
-                        onClick={() => setSubmissionPopupOpen(true)}
-                        className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                        title="View parade state text">
-                        <FileText className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => downloadSubmissions('txt', viewDate)} className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Download .txt">
-                        <FileText className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => downloadSubmissions('csv', viewDate)} className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Download .csv">
-                        <Download className="h-3.5 w-3.5" />
-                      </button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSubmissionPopupOpen(true)}>
+                        <FileText className="h-3 w-3 mr-1" /> Parade State
+                      </Button>
                     </div>
                   </div>
 
-                  {/* Submission count summary */}
-                  <p className="text-xs text-muted-foreground">
-                    {daySubmissions.length} of {members.length} submitted
-                  </p>
+                  <p className="text-xs text-muted-foreground">{daySubmissions.length} of {members.length} submitted</p>
 
                   <div className="rounded-xl border bg-card overflow-hidden divide-y">
-                    {/* Submitted section header */}
                     <div className="px-3 py-2 bg-green-50/60 dark:bg-green-900/10">
                       <p className="text-xs font-semibold text-green-700 dark:text-green-400">
                         ✅ Submitted ({daySubmissions.length})
                       </p>
                     </div>
-
-                    {daySubmissions.length === 0 ? (
+                    {sortedSubmissions.length === 0 ? (
                       <div className="px-3 py-3 text-xs text-muted-foreground italic">No submissions for this date</div>
                     ) : (
-                      daySubmissions.map(s => {
-                        const name = s.profile
-                          ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ' : ''}${s.profile.full_name}`
-                          : 'Member';
+                      sortedSubmissions.map(s => {
+                        const name = getName(s);
                         return (
                           <div key={s.id} className="flex items-start justify-between gap-2 px-3 py-2.5">
                             <div className="min-w-0">
@@ -1736,7 +1747,7 @@ export default function Teams() {
                                 <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
                               </div>
                               {s.session_type === 'SFT' && s.sft_type && (
-                                <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>
                               )}
                               {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
                             </div>
@@ -1745,18 +1756,15 @@ export default function Teams() {
                         );
                       })
                     )}
-
-                    {/* Not submitted section header */}
                     <div className="px-3 py-2 bg-red-50/60 dark:bg-red-900/10">
                       <p className="text-xs font-semibold text-red-600 dark:text-red-400">
                         ❌ Not Submitted ({notSub.length})
                       </p>
                     </div>
-
-                    {notSub.length === 0 ? (
+                    {sortedNotSub.length === 0 ? (
                       <div className="px-3 py-3 text-xs text-muted-foreground italic">All members have submitted</div>
                     ) : (
-                      notSub.map(m => {
+                      sortedNotSub.map(m => {
                         const mp = m.profile;
                         const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
                         return (
@@ -2194,54 +2202,71 @@ export default function Teams() {
       })()}
 
       {/* ── Parade State Popup ── */}
-      {submissionPopupOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setSubmissionPopupOpen(false)}>
-          <div className="w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
-              <div>
-                <h2 className="text-base font-semibold">Parade State</h2>
-                <p className="text-xs text-muted-foreground">{fmtDate(submissionPopupDate, { weekday: true })}</p>
+      {submissionPopupOpen && (() => {
+        const STATUS_ORDER: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3 };
+        const daySubs = allSubmissions.filter(s => s.submission_date === submissionPopupDate);
+        const notSubmitted = members.filter(m => !daySubs.some(s => s.user_id === m.user_id));
+        const sortedDaySubs = [...daySubs].sort((a, b) => {
+          const od = (STATUS_ORDER[a.attendance_status] ?? 99) - (STATUS_ORDER[b.attendance_status] ?? 99);
+          if (od !== 0) return od;
+          const na = a.profile ? `${a.profile.rank && a.profile.rank !== 'Other' ? a.profile.rank+' ':'' }${a.profile.full_name}` : '';
+          const nb = b.profile ? `${b.profile.rank && b.profile.rank !== 'Other' ? b.profile.rank+' ':'' }${b.profile.full_name}` : '';
+          return na.localeCompare(nb);
+        });
+        const sortedNotSub = [...notSubmitted].sort((a, b) => {
+          const na = `${a.profile?.rank && a.profile.rank !== 'Other' ? a.profile.rank+' ':'' }${a.profile?.full_name ?? ''}`;
+          const nb = `${b.profile?.rank && b.profile.rank !== 'Other' ? b.profile.rank+' ':'' }${b.profile?.full_name ?? ''}`;
+          return na.localeCompare(nb);
+        });
+        const lines: string[] = [`Parade State - ${fmtDate(submissionPopupDate)}`, `Team: ${team?.name}`, ''];
+        lines.push(`SUBMITTED (${sortedDaySubs.length})`);
+        sortedDaySubs.forEach(s => {
+          const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
+          lines.push(`  ${name} - ${s.session_type} | ${s.attendance_status}${s.temperature ? ` | ${s.temperature}C` : ''}${s.notes ? ` | ${s.notes}` : ''}`);
+        });
+        lines.push('');
+        lines.push(`NOT SUBMITTED (${sortedNotSub.length})`);
+        sortedNotSub.forEach(m => {
+          const mp = m.profile;
+          lines.push(`  ${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`);
+        });
+        const stateText = lines.join('\n');
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4" onClick={() => setSubmissionPopupOpen(false)}>
+            <div className="w-full sm:max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b shrink-0">
+                <div>
+                  <h2 className="text-base font-semibold">Parade State</h2>
+                  <p className="text-xs text-muted-foreground">{fmtDate(submissionPopupDate, { weekday: true })}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => {
+                    navigator.clipboard.writeText(stateText);
+                    toast({ title: 'Copied to clipboard!' });
+                  }}>
+                    <Copy className="h-3 w-3 mr-1" /> Copy
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv', submissionPopupDate)}>
+                    <Download className="h-3 w-3 mr-1" /> CSV
+                  </Button>
+                  <button onClick={() => setSubmissionPopupOpen(false)} className="p-1 rounded hover:bg-muted">
+                    <XIcon className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('txt', submissionPopupDate)}>
-                  <FileText className="h-3 w-3 mr-1" /> .txt
-                </Button>
-                <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv', submissionPopupDate)}>
-                  <Download className="h-3 w-3 mr-1" /> .csv
-                </Button>
-                <button onClick={() => setSubmissionPopupOpen(false)} className="p-1 rounded hover:bg-muted ml-1">
-                  <XIcon className="h-4 w-4" />
-                </button>
+              <div className="p-5 overflow-y-auto flex-1">
+                <Textarea
+                  readOnly
+                  value={stateText}
+                  className="font-mono text-xs resize-none w-full h-full min-h-[200px]"
+                  rows={Math.min(25, lines.length + 2)}
+                />
               </div>
-            </div>
-            <div className="p-5 overflow-y-auto max-h-[70vh]">
-              <Textarea
-                readOnly
-                value={(() => {
-                  const daySubmissions = allSubmissions.filter(s => s.submission_date === submissionPopupDate);
-                  const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
-                  const lines: string[] = [`Parade State — ${fmtDate(submissionPopupDate)}`, `Team: ${team?.name}`, ''];
-                  lines.push(`✅ SUBMITTED (${daySubmissions.length})`);
-                  daySubmissions.forEach(s => {
-                    const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
-                    lines.push(`  ${name} — ${s.session_type} | ${s.attendance_status}${s.temperature ? ` | ${s.temperature}°C` : ''}${s.notes ? ` | ${s.notes}` : ''}`);
-                  });
-                  if (notSub.length > 0) {
-                    lines.push('', `❌ NOT SUBMITTED (${notSub.length})`);
-                    notSub.forEach(m => {
-                      const p = m.profile;
-                      lines.push(`  ${p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}${p?.full_name ?? 'Member'}`);
-                    });
-                  }
-                  return lines.join('\n');
-                })()}
-                className="font-mono text-xs resize-none w-full"
-                rows={Math.min(20, 5 + allSubmissions.filter(s => s.submission_date === submissionPopupDate).length + members.filter(m => !allSubmissions.some(s => s.user_id === m.user_id && s.submission_date === submissionPopupDate)).length + 2)}
-              />
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Create Post Modal ── */}
       {showPostModal && (
