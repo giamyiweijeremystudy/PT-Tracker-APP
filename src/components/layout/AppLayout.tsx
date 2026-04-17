@@ -12,7 +12,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger className="mr-3 sm:mr-4" />
             <h2 className="text-base sm:text-lg font-semibold text-foreground">PT App</h2>
           </header>
-          <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto" style={{ paddingBottom: "calc(5rem + env(safe-area-inset-bottom, 20px))" }} className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto">
+          <main className="flex-1 p-3 sm:p-4 md:p-6 overflow-auto" style={{ paddingBottom: "calc(5rem + env(safe-area-inset-bottom, 20px))" }}>
             {children}
           </main>
         </div>
