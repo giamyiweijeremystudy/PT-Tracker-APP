@@ -2233,8 +2233,10 @@ export default function Teams() {
         const stateText = lines.join('\n');
 
         return (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4" onClick={() => setSubmissionPopupOpen(false)}>
-            <div className="w-full sm:max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 sm:p-4" onClick={() => setSubmissionPopupOpen(false)}>
+            <div className="w-full sm:max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col"
+              style={{ maxHeight: 'calc(85vh - env(safe-area-inset-bottom, 0px) - 64px)', marginBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}
+              onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b shrink-0">
                 <div>
                   <h2 className="text-base font-semibold">Parade State</h2>
