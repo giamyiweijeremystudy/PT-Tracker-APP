@@ -18,15 +18,15 @@ import { TrendingUp, Plus, ArrowLeft, Trash2, X } from 'lucide-react';
 // ── Exercise presets ──────────────────────────────────────────────────────────
 
 const PRESETS = [
-  { value: 'running',           label: 'Running',           emoji: '🏃' },
-  { value: 'swimming',          label: 'Swimming',          emoji: '🏊' },
-  { value: 'ippt_training',     label: 'IPPT Training',     emoji: '🪖' },
-  { value: 'gym',               label: 'Gym',               emoji: '🏋️' },
-  { value: 'cycling',           label: 'Cycling',           emoji: '🚴' },
-  { value: 'strength_training', label: 'Strength Training', emoji: '💪' },
-  { value: 'calisthenics',      label: 'Calisthenics',      emoji: '🤸' },
-  { value: 'walking',           label: 'Walking',           emoji: '🚶' },
-  { value: 'jogging',           label: 'Jogging',           emoji: '👟' },
+  { value: 'running',           label: 'Running',           emoji: '🏃', defaultMetrics: ['Distance (km)', 'Time (min)', 'Pace (min/km)'] },
+  { value: 'swimming',          label: 'Swimming',          emoji: '🏊', defaultMetrics: ['Laps', 'Distance (m)', 'Time (min)'] },
+  { value: 'ippt_training',     label: 'IPPT Training',     emoji: '🪖', defaultMetrics: ['Push-ups', 'Sit-ups', 'Run Time (sec)'] },
+  { value: 'gym',               label: 'Gym',               emoji: '🏋️', defaultMetrics: ['Sets', 'Reps', 'Weight (kg)'] },
+  { value: 'cycling',           label: 'Cycling',           emoji: '🚴', defaultMetrics: ['Distance (km)', 'Time (min)'] },
+  { value: 'strength_training', label: 'Strength Training', emoji: '💪', defaultMetrics: ['Sets', 'Reps', 'Weight (kg)'] },
+  { value: 'calisthenics',      label: 'Calisthenics',      emoji: '🤸', defaultMetrics: ['Reps', 'Sets', 'Duration (min)'] },
+  { value: 'walking',           label: 'Walking',           emoji: '🚶', defaultMetrics: ['Distance (km)', 'Duration (min)'] },
+  { value: 'jogging',           label: 'Jogging',           emoji: '👟', defaultMetrics: ['Distance (km)', 'Time (min)'] },
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -82,6 +82,18 @@ function AddExerciseModal({
   const isCustom = selected === '__custom__';
   const preset = PRESETS.find((p) => p.value === selected);
 
+  const handleSelectPreset = (value: string) => {
+    setSelected(value);
+    setCustomLabel('');
+    setCustomEmoji('');
+    if (value !== '__custom__') {
+      const p = PRESETS.find(p => p.value === value);
+      if (p) setMetricInputs([...p.defaultMetrics, ''].slice(0, p.defaultMetrics.length + 1));
+    } else {
+      setMetricInputs(['', '']);
+    }
+  };
+
   const handleCreate = async () => {
     const label = isCustom ? customLabel.trim() : preset?.label ?? '';
     if (!label) { toast({ title: 'Enter an exercise name', variant: 'destructive' }); return; }
@@ -103,16 +115,17 @@ function AddExerciseModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[90vh] sm:max-h-[85vh]"
+        className="w-full max-w-lg bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ maxHeight: 'min(90dvh, 680px)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b shrink-0">
-          <h2 className="text-base font-semibold">Add Exercise</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-muted">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b shrink-0">
+          <h2 className="text-base font-bold">Add Exercise</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -126,7 +139,7 @@ function AddExerciseModal({
               {PRESETS.map((p) => (
                 <button
                   key={p.value}
-                  onClick={() => { setSelected(p.value); setCustomLabel(''); setCustomEmoji(''); }}
+                  onClick={() => handleSelectPreset(p.value)}
                   className={
                     'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors text-left ' +
                     (selected === p.value
@@ -139,7 +152,7 @@ function AddExerciseModal({
                 </button>
               ))}
               <button
-                onClick={() => setSelected('__custom__')}
+                onClick={() => handleSelectPreset('__custom__')}
                 className={
                   'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors text-left ' +
                   (selected === '__custom__'
@@ -179,7 +192,14 @@ function AddExerciseModal({
           {/* Metrics */}
           {selected && (
             <div className="space-y-2">
-              <Label>Metrics to track</Label>
+              <div className="flex items-center justify-between">
+                <Label>Metrics to track</Label>
+                {!isCustom && (
+                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                    Pre-filled · edit as needed
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 Name each value you want to log, e.g. Reps, Weight (kg), Time (min)
               </p>
