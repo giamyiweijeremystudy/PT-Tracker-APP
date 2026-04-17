@@ -54,54 +54,43 @@
   }
 
   .dark {
-    /* Page background — deep navy, not pure black */
     --background: 222 28% 8%;
     --foreground: 215 20% 92%;
 
-    /* Cards sit slightly above the background */
-    --card: 222 26% 12%;
+    --card: 222 28% 11%;
     --card-foreground: 215 20% 92%;
 
-    /* Popovers / dropdowns match cards */
-    --popover: 222 26% 14%;
+    --popover: 222 28% 11%;
     --popover-foreground: 215 20% 92%;
 
-    /* Primary blue — slightly brighter so it pops on dark */
     --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
+    --primary-foreground: 210 40% 98%;
 
-    /* Secondary / chip backgrounds */
-    --secondary: 220 22% 20%;
+    --secondary: 220 22% 16%;
     --secondary-foreground: 215 20% 88%;
 
-    /* Muted surfaces and text */
-    --muted: 220 22% 18%;
-    --muted-foreground: 215 16% 58%;
+    --muted: 220 22% 16%;
+    --muted-foreground: 215 16% 55%;
 
-    /* Accent (hover states, selected items) */
-    --accent: 220 22% 20%;
-    --accent-foreground: 215 20% 88%;
+    --accent: 220 22% 18%;
+    --accent-foreground: 215 20% 90%;
 
-    /* Destructive — readable red on dark */
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 210 40% 98%;
 
-    /* Semantic colours — bright enough to read on dark cards */
-    --success: 142 65% 42%;
+    --success: 142 60% 42%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 90% 52%;
+    --warning: 38 85% 50%;
     --warning-foreground: 0 0% 0%;
 
     --info: 199 85% 52%;
     --info-foreground: 0 0% 0%;
 
-    /* Borders — subtle but visible */
     --border: 220 20% 22%;
     --input: 220 22% 16%;
     --ring: 217 91% 60%;
 
-    /* Sidebar — slightly darker than cards */
     --sidebar-background: 222 28% 10%;
     --sidebar-foreground: 215 16% 82%;
     --sidebar-primary: 217 91% 60%;
@@ -120,6 +109,8 @@
 
   html {
     color-scheme: light;
+    /* Fix: use dvh so Chrome/Firefox mobile browser chrome is accounted for */
+    height: 100%;
   }
 
   html.dark {
@@ -128,8 +119,11 @@
 
   body {
     @apply bg-background text-foreground;
-    /* Smooth background transition on dark mode toggle */
     transition: background-color 0.2s ease, color 0.2s ease;
+    min-height: 100%;
+    min-height: 100dvh;
+    /* Prevent horizontal scroll on mobile */
+    overflow-x: hidden;
   }
 
   /* Dark mode scrollbar */
@@ -151,5 +145,12 @@
   /* Prevent white flash on dark inputs */
   .dark input, .dark textarea, .dark select {
     color-scheme: dark;
+  }
+}
+
+@layer utilities {
+  /* Utility for modals that need to clear the bottom nav on mobile */
+  .modal-bottom-safe {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 16px));
   }
 }
