@@ -2132,9 +2132,10 @@ export default function Teams() {
           ? `${targetProfile.rank && targetProfile.rank !== 'Other' ? targetProfile.rank+' ' : ''}${targetProfile.full_name}`
           : 'Member';
         return (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4"
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
             onClick={() => setShowAdminSubModal(false)}>
-            <div className="w-full sm:max-w-md bg-background rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[90vh]"
+            <div className="w-full max-w-md bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              style={{ maxHeight: 'min(90dvh, 680px)' }}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b shrink-0">
                 <div>
@@ -2233,40 +2234,114 @@ export default function Teams() {
         const stateText = lines.join('\n');
 
         return (
-          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 sm:p-4" onClick={() => setSubmissionPopupOpen(false)}>
-            <div className="w-full sm:max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col"
-              style={{ maxHeight: 'calc(85vh - env(safe-area-inset-bottom, 0px) - 64px)', marginBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}
-              onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b shrink-0">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => setSubmissionPopupOpen(false)}>
+            <div
+              className="w-full max-w-lg bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              style={{ maxHeight: 'min(85dvh, 600px)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b shrink-0 bg-background">
                 <div>
-                  <h2 className="text-base font-semibold">Parade State</h2>
-                  <p className="text-xs text-muted-foreground">{fmtDate(submissionPopupDate, { weekday: true })}</p>
+                  <h2 className="text-base font-bold">Parade State</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">{fmtDate(submissionPopupDate, { weekday: true })}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => {
-                    navigator.clipboard.writeText(stateText);
-                    toast({ title: 'Copied to clipboard!' });
-                  }}>
-                    <Copy className="h-3 w-3 mr-1" /> Copy
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('txt', submissionPopupDate)}>
-                    <FileText className="h-3 w-3 mr-1" /> TXT
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => downloadSubmissions('csv', submissionPopupDate)}>
-                    <Download className="h-3 w-3 mr-1" /> CSV
-                  </Button>
-                  <button onClick={() => setSubmissionPopupOpen(false)} className="p-1 rounded hover:bg-muted">
-                    <XIcon className="h-4 w-4" />
-                  </button>
+                <button onClick={() => setSubmissionPopupOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground ml-3 shrink-0 -mt-0.5">
+                  <XIcon className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Structured parade state body */}
+              <div className="overflow-y-auto flex-1 p-5 space-y-4">
+                {/* Submitted section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-green-600">Submitted ({sortedDaySubs.length})</span>
+                    <div className="flex-1 h-px bg-green-200 dark:bg-green-900" />
+                  </div>
+                  {sortedDaySubs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-1">None</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {sortedDaySubs.map(s => {
+                        const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
+                        const statusColor: Record<string,string> = {
+                          'Participating': 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+                          'Light Duty':    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
+                          'MC':            'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+                          'On Leave':      'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+                        };
+                        return (
+                          <div key={s.id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold truncate">{name}</p>
+                              <p className="text-[10px] text-muted-foreground">{s.session_type}{s.notes ? ` · ${s.notes}` : ''}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {s.temperature && <span className="text-[10px] text-muted-foreground">{s.temperature}°C</span>}
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor[s.attendance_status] ?? 'bg-muted text-muted-foreground'}`}>
+                                {s.attendance_status}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Not submitted section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-red-500">Not Submitted ({sortedNotSub.length})</span>
+                    <div className="flex-1 h-px bg-red-200 dark:bg-red-900" />
+                  </div>
+                  {sortedNotSub.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-1">All submitted! 🎉</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {sortedNotSub.map(m => {
+                        const mp = m.profile;
+                        const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
+                        return (
+                          <div key={m.user_id} className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2">
+                            <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
+                              {(mp?.full_name ?? 'M').charAt(0).toUpperCase()}
+                            </div>
+                            <p className="text-xs font-medium truncate">{name}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Raw text export area */}
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Export Text</p>
+                  <Textarea
+                    readOnly
+                    value={stateText}
+                    className="font-mono text-[10px] resize-none w-full bg-muted/30 border-muted"
+                    rows={Math.min(8, lines.length + 1)}
+                  />
                 </div>
               </div>
-              <div className="p-5 overflow-y-auto flex-1">
-                <Textarea
-                  readOnly
-                  value={stateText}
-                  className="font-mono text-xs resize-none w-full h-full min-h-[200px]"
-                  rows={Math.min(25, lines.length + 2)}
-                />
+
+              {/* Footer actions */}
+              <div className="flex items-center gap-2 px-5 py-3 border-t shrink-0 bg-background">
+                <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => {
+                  navigator.clipboard.writeText(stateText);
+                  toast({ title: 'Copied to clipboard!' });
+                }}>
+                  <Copy className="h-3 w-3 mr-1.5" /> Copy
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => downloadSubmissions('txt', submissionPopupDate)}>
+                  <FileText className="h-3 w-3 mr-1.5" /> TXT
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => downloadSubmissions('csv', submissionPopupDate)}>
+                  <Download className="h-3 w-3 mr-1.5" /> CSV
+                </Button>
               </div>
             </div>
           </div>
@@ -2275,15 +2350,15 @@ export default function Teams() {
 
       {/* ── Create Post Modal ── */}
       {showPostModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4" onClick={() => setShowPostModal(false)}>
-          <div className="w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowPostModal(false)}>
+          <div className="w-full max-w-lg bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden" style={{ maxHeight: 'min(90dvh, 700px)' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
               <h2 className="text-base font-semibold">Create Post</h2>
               <button onClick={() => setShowPostModal(false)} className="p-1 rounded hover:bg-muted">
                 <XIcon className="h-4 w-4" />
               </button>
             </div>
-            <div className="p-5 space-y-4 overflow-y-auto max-h-[80vh]">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
 
               {/* Post type selector */}
               <div className="space-y-2">
