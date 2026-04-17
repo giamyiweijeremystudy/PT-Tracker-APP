@@ -13,32 +13,28 @@ export default function BottomNav() {
   const navigate = useNavigate();
 
   return (
-    <>
-      {/* Spacer so content is not hidden behind the nav */}
-      <div className="sm:hidden h-16" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} />
-      <nav
-        className="sm:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-card"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        <div className="flex items-stretch h-16">
-          {NAV_ITEMS.map((item) => {
-            const active = location.pathname === item.url;
-            return (
-              <button
-                key={item.url}
-                onClick={() => navigate(item.url)}
-                className={
-                  'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors ' +
-                  (active ? 'text-primary' : 'text-muted-foreground hover:text-foreground')
-                }
-              >
-                <item.icon className={'h-5 w-5 ' + (active ? 'stroke-[2.5px]' : '')} />
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-    </>
+    <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t">
+      {/* Actual nav buttons — always 64px tall */}
+      <div className="flex items-stretch h-16">
+        {NAV_ITEMS.map((item) => {
+          const active = location.pathname === item.url;
+          return (
+            <button
+              key={item.url}
+              onClick={() => navigate(item.url)}
+              className={
+                'flex-1 flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors ' +
+                (active ? 'text-primary' : 'text-muted-foreground hover:text-foreground')
+              }
+            >
+              <item.icon className={'h-5 w-5 ' + (active ? 'stroke-[2.5px]' : '')} />
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+      {/* Fills the safe-area gap below the nav with the same bg colour */}
+      <div className="bg-card" style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
+    </nav>
   );
 }
