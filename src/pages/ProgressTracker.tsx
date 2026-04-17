@@ -103,21 +103,21 @@ function AddExerciseModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-background rounded-2xl shadow-xl overflow-hidden"
+        className="w-full max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[90vh] sm:max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b shrink-0">
           <h2 className="text-base font-semibold">Add Exercise</h2>
           <button onClick={onClose} className="p-1 rounded hover:bg-muted">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
+        <div className="p-5 space-y-5 overflow-y-auto flex-1">
 
           {/* Preset grid */}
           <div className="space-y-2">
