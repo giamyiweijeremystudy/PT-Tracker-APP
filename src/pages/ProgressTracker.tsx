@@ -115,22 +115,29 @@ function AddExerciseModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ maxHeight: 'min(90dvh, 680px)' }}
+        className="w-full sm:max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col"
+        style={{
+          maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-bottom, 16px) - env(safe-area-inset-top, 0px))',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b shrink-0">
+        {/* Drag handle (mobile) */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
+          <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+        </div>
+
+        <div className="flex items-center justify-between px-5 pt-2 sm:pt-5 pb-4 border-b shrink-0">
           <h2 className="text-base font-bold">Add Exercise</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-5 overflow-y-auto flex-1">
+        <div className="p-5 space-y-5 overflow-y-auto flex-1 overscroll-contain">
 
           {/* Preset grid */}
           <div className="space-y-2">
@@ -141,26 +148,26 @@ function AddExerciseModal({
                   key={p.value}
                   onClick={() => handleSelectPreset(p.value)}
                   className={
-                    'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors text-left ' +
+                    'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors text-left ' +
                     (selected === p.value
                       ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border bg-background hover:bg-muted')
                   }
                 >
-                  <span className="text-base">{p.emoji}</span>
+                  <span className="text-sm">{p.emoji}</span>
                   {p.label}
                 </button>
               ))}
               <button
                 onClick={() => handleSelectPreset('__custom__')}
                 className={
-                  'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors text-left ' +
+                  'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors text-left ' +
                   (selected === '__custom__'
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-background hover:bg-muted')
                 }
               >
-                <span className="text-base">✏️</span>
+                <span className="text-sm">✏️</span>
                 Custom
               </button>
             </div>
