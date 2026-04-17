@@ -1460,7 +1460,7 @@ export default function Teams() {
         };
 
         return (
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0 overflow-hidden">
             {/* Important pinned events */}
             {events.filter(e => e.is_important && e.event_date >= todayStr).slice(0,3).map(e => (
               <div key={e.id} className="flex items-start gap-2 rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3">
@@ -1473,7 +1473,7 @@ export default function Teams() {
               </div>
             ))}
 
-            <Card>
+            <Card className="overflow-hidden">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-primary" /> Submit Attendance
@@ -1488,7 +1488,7 @@ export default function Teams() {
                   <Input type="date" value={subDate} onChange={e => {
                     setSubDate(e.target.value);
                     setSubEventId('none');
-                  }} className="w-full max-w-full" />
+                  }} className="w-full min-w-0 block" style={{ maxWidth: '100%', boxSizing: 'border-box' }} />
                 </div>
 
                 {/* Link to event — only shows events for the selected date */}
