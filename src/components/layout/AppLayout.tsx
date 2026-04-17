@@ -5,7 +5,7 @@ import BottomNav from "./BottomNav";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full">
+      <div className="flex w-full" style={{ minHeight: '100dvh' }}>
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-12 sm:h-14 flex items-center border-b border-border px-3 sm:px-4 bg-card/95 backdrop-blur-sm sticky top-0 z-30">
