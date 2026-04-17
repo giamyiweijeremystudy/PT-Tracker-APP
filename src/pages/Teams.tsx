@@ -23,7 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
   Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords, Star, Pin, AlertCircle,
-  BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon, Download, FileText, Users2, Trophy, Medal,
+  BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon, Download, FileText, Users2, Trophy, Medal, Pencil,
 } from 'lucide-react';
 
 // ─── Local date helper (respects device timezone, e.g. UTC+8) ─────────────────
@@ -306,6 +306,20 @@ export default function Teams() {
   const [subAttendance, setSubAttendance]   = useState<string>('Participating');
   const [sftType, setSftType]               = useState<string>('Running');
   const [sftCustom, setSftCustom]           = useState('');
+
+  // Edit submission state
+  const [editingSubId, setEditingSubId]     = useState<string | null>(null);
+
+  // Admin submit-for-others state
+  const [adminSubUserId, setAdminSubUserId] = useState<string>('');
+  const [adminSubType, setAdminSubType]     = useState<'SFT'|'PT'>('PT');
+  const [adminSubAttendance, setAdminSubAttendance] = useState<string>('Participating');
+  const [adminSubNotes, setAdminSubNotes]   = useState('');
+  const [adminSubTemp, setAdminSubTemp]     = useState('');
+  const [adminSftType, setAdminSftType]     = useState<string>('Running');
+  const [adminSftCustom, setAdminSftCustom] = useState('');
+  const [adminSubmitting, setAdminSubmitting] = useState(false);
+  const [showAdminSubModal, setShowAdminSubModal] = useState(false);
 
 
   const [submissionPopupOpen, setSubmissionPopupOpen] = useState(false);
@@ -722,6 +736,58 @@ export default function Teams() {
     toast({ title: 'Attendance submitted!' });
     setSubTemp(''); setSubNotes(''); setSftCustom('');
     fetchSubmissions();
+    fetchAllSubmissions();
+  };
+
+  const handleEditSubmission = async (id: string) => {
+    if (!team || !user) return;
+    setSubmitting(true);
+    const { error } = await supabase.from('team_submissions').update({
+      session_type: subType,
+      attendance_status: subAttendance,
+      sft_type: subType === 'SFT' ? sftType : null,
+      sft_custom: subType === 'SFT' && sftType === 'Others' ? sftCustom : null,
+      temperature: subTemp ? parseFloat(subTemp) : null,
+      notes: subNotes,
+    }).eq('id', id);
+    setSubmitting(false);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Submission updated!' });
+    setEditingSubId(null);
+    setSubTemp(''); setSubNotes(''); setSftCustom('');
+    fetchSubmissions();
+    fetchAllSubmissions();
+  };
+
+  const handleDeleteSubmission = async (id: string) => {
+    const { error } = await supabase.from('team_submissions').delete().eq('id', id);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Submission deleted' });
+    fetchSubmissions();
+    fetchAllSubmissions();
+  };
+
+  const handleAdminSubmit = async () => {
+    if (!team || !adminSubUserId) return;
+    setAdminSubmitting(true);
+    const { error } = await supabase.from('team_submissions').insert({
+      team_id: team.id,
+      user_id: adminSubUserId,
+      event_id: null,
+      submission_date: submissionPopupDate,
+      session_type: adminSubType,
+      attendance_status: adminSubAttendance,
+      sft_type: adminSubType === 'SFT' ? adminSftType : null,
+      sft_custom: adminSubType === 'SFT' && adminSftType === 'Others' ? adminSftCustom : null,
+      temperature: adminSubTemp ? parseFloat(adminSubTemp) : null,
+      notes: adminSubNotes,
+    });
+    setAdminSubmitting(false);
+    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Attendance recorded!' });
+    setShowAdminSubModal(false);
+    setAdminSubUserId(''); setAdminSubNotes(''); setAdminSubTemp(''); setAdminSftCustom('');
+    fetchAllSubmissions();
   };
 
   const copyCode = () => {
@@ -1406,9 +1472,8 @@ export default function Teams() {
                   <Label>Date</Label>
                   <Input type="date" value={subDate} onChange={e => {
                     setSubDate(e.target.value);
-                    // Reset event selection when date changes — only today's events shown
                     setSubEventId('none');
-                  }} />
+                  }} className="w-full max-w-full" />
                 </div>
 
                 {/* Link to event — only shows events for the selected date */}
@@ -1500,19 +1565,99 @@ export default function Teams() {
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">My Recent Submissions</p>
                 {submissions.map(s => (
-                  <div key={s.id} className="rounded-lg border bg-card p-3 flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold">{fmtDate(s.submission_date, { year: true })}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
-                        <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
+                  <div key={s.id} className="rounded-lg border bg-card p-3 space-y-2">
+                    {editingSubId === s.id ? (
+                      // ── Edit mode ──
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold">{fmtDate(s.submission_date, { year: true })}</span>
+                          <button onClick={() => { setEditingSubId(null); setSubTemp(''); setSubNotes(''); setSftCustom(''); }}
+                            className="p-1 rounded hover:bg-muted text-muted-foreground">
+                            <XIcon className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <div className="flex rounded-lg border overflow-hidden">
+                          {(['PT','SFT'] as const).map(t2 => (
+                            <button key={t2} onClick={() => setSubType(t2)}
+                              className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${subType === t2 ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                              {t2}
+                            </button>
+                          ))}
+                        </div>
+                        {subType === 'SFT' && (
+                          <Select value={sftType} onValueChange={setSftType}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>{SFT_TYPES.map(t2 => <SelectItem key={t2} value={t2} className="text-xs">{t2}</SelectItem>)}</SelectContent>
+                          </Select>
+                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                          {ATTENDANCE_STATUSES.map(st => (
+                            <button key={st} onClick={() => setSubAttendance(st)}
+                              className={`py-1.5 px-2 rounded-lg border text-xs font-medium transition-colors text-left ${subAttendance === st ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
+                              {st === 'Participating' && '✅ '}{st === 'Light Duty' && '⚠️ '}{st === 'MC' && '🏥 '}{st === 'On Leave' && '🏖️ '}
+                              {st}
+                            </button>
+                          ))}
+                        </div>
+                        <Input type="number" step="0.1" min="35" max="42" placeholder="Temp °C (optional)" value={subTemp} onChange={e => setSubTemp(e.target.value)} className="h-8 text-xs" />
+                        <Input placeholder="Notes (optional)" value={subNotes} onChange={e => setSubNotes(e.target.value)} className="h-8 text-xs" />
+                        <div className="flex gap-2">
+                          <Button size="sm" className="flex-1 h-8 text-xs" onClick={() => handleEditSubmission(s.id)} disabled={submitting}>
+                            {submitting ? 'Saving...' : 'Save Changes'}
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="destructive" className="h-8 text-xs px-2">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete submission?</AlertDialogTitle>
+                                <AlertDialogDescription>This will permanently remove this attendance record.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteSubmission(s.id)} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </div>
-                      {s.session_type === 'SFT' && s.sft_type && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` — ${s.sft_custom}` : ''}</p>
-                      )}
-                      {s.notes && <p className="text-xs text-muted-foreground mt-0.5">{s.notes}</p>}
-                    </div>
-                    {s.temperature && <span className="text-xs text-muted-foreground shrink-0">{s.temperature}°C</span>}
+                    ) : (
+                      // ── View mode ──
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-semibold">{fmtDate(s.submission_date, { year: true })}</span>
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
+                            <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
+                          </div>
+                          {s.session_type === 'SFT' && s.sft_type && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>
+                          )}
+                          {s.notes && <p className="text-xs text-muted-foreground mt-0.5">{s.notes}</p>}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {s.temperature && <span className="text-xs text-muted-foreground">{s.temperature}°C</span>}
+                          <button
+                            onClick={() => {
+                              setEditingSubId(s.id);
+                              setSubType(s.session_type as 'PT'|'SFT');
+                              setSubAttendance(s.attendance_status);
+                              setSftType(s.sft_type ?? 'Running');
+                              setSftCustom(s.sft_custom ?? '');
+                              setSubTemp(s.temperature ? String(s.temperature) : '');
+                              setSubNotes(s.notes ?? '');
+                            }}
+                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="Edit submission"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1612,11 +1757,28 @@ export default function Teams() {
                       <div className="px-3 py-3 text-xs text-muted-foreground italic">All members have submitted</div>
                     ) : (
                       notSub.map(m => {
-                        const p = m.profile;
-                        const name = `${p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}${p?.full_name ?? 'Member'}`;
+                        const mp = m.profile;
+                        const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
                         return (
-                          <div key={m.user_id} className="px-3 py-2.5">
+                          <div key={m.user_id} className="px-3 py-2.5 flex items-center justify-between gap-2">
                             <span className="text-xs font-medium text-muted-foreground">{name}</span>
+                            {canManage && (
+                              <button
+                                onClick={() => {
+                                  setAdminSubUserId(m.user_id);
+                                  setAdminSubType('PT');
+                                  setAdminSubAttendance('Participating');
+                                  setAdminSubNotes('');
+                                  setAdminSubTemp('');
+                                  setAdminSftType('Running');
+                                  setAdminSftCustom('');
+                                  setShowAdminSubModal(true);
+                                }}
+                                className="text-xs text-primary hover:underline shrink-0 flex items-center gap-1"
+                              >
+                                <Plus className="h-3 w-3" /> Record
+                              </button>
+                            )}
                           </div>
                         );
                       })
@@ -1950,6 +2112,83 @@ export default function Teams() {
                 )}
               </div>
             )}
+          </div>
+        );
+      })()}
+
+      {/* ── Admin Submit For Member Modal ── */}
+      {showAdminSubModal && canManage && (() => {
+        const targetMember = members.find(m => m.user_id === adminSubUserId);
+        const targetProfile = targetMember?.profile;
+        const targetName = targetProfile
+          ? `${targetProfile.rank && targetProfile.rank !== 'Other' ? targetProfile.rank+' ' : ''}${targetProfile.full_name}`
+          : 'Member';
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4"
+            onClick={() => setShowAdminSubModal(false)}>
+            <div className="w-full sm:max-w-md bg-background rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[90vh]"
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b shrink-0">
+                <div>
+                  <h2 className="text-base font-semibold">Record Attendance</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">{targetName} · {fmtDate(submissionPopupDate)}</p>
+                </div>
+                <button onClick={() => setShowAdminSubModal(false)} className="p-1 rounded hover:bg-muted">
+                  <XIcon className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                <div className="space-y-2">
+                  <Label>Session Type</Label>
+                  <div className="flex rounded-lg border overflow-hidden">
+                    {(['PT','SFT'] as const).map(t2 => (
+                      <button key={t2} onClick={() => setAdminSubType(t2)}
+                        className={`flex-1 py-2 text-sm font-semibold transition-colors ${adminSubType === t2 ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                        {t2}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {adminSubType === 'SFT' && (
+                  <div className="space-y-2">
+                    <Label>Type of SFT</Label>
+                    <Select value={adminSftType} onValueChange={setAdminSftType}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{SFT_TYPES.map(t2 => <SelectItem key={t2} value={t2}>{t2}</SelectItem>)}</SelectContent>
+                    </Select>
+                    {adminSftType === 'Others' && (
+                      <Input placeholder="Describe the activity..." value={adminSftCustom} onChange={e => setAdminSftCustom(e.target.value)} />
+                    )}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Attendance Status</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ATTENDANCE_STATUSES.map(st => (
+                      <button key={st} onClick={() => setAdminSubAttendance(st)}
+                        className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors text-left ${adminSubAttendance === st ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
+                        {st === 'Participating' && '✅ '}{st === 'Light Duty' && '⚠️ '}{st === 'MC' && '🏥 '}{st === 'On Leave' && '🏖️ '}
+                        {st}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Thermometer className="h-4 w-4" /> Temperature (°C) <span className="text-muted-foreground text-xs">(optional)</span>
+                  </Label>
+                  <Input type="number" step="0.1" min="35" max="42" placeholder="e.g. 36.5" value={adminSubTemp} onChange={e => setAdminSubTemp(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Textarea placeholder="Any remarks..." value={adminSubNotes} onChange={e => setAdminSubNotes(e.target.value)} rows={2} />
+                </div>
+                <Button onClick={handleAdminSubmit} disabled={adminSubmitting} className="w-full">
+                  <Clock className="h-4 w-4 mr-2" />
+                  {adminSubmitting ? 'Recording...' : 'Record Attendance'}
+                </Button>
+              </div>
+            </div>
           </div>
         );
       })()}
