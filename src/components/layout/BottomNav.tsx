@@ -14,8 +14,8 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
+      className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t shadow-[0_-1px_0_0_hsl(var(--border))]"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 20px)', backdropFilter: 'none' }}
     >
       <div className="flex items-stretch h-16">
         {NAV_ITEMS.map((item) => {
