@@ -146,6 +146,31 @@
   .dark input, .dark textarea, .dark select {
     color-scheme: dark;
   }
+
+  /* Normalise native date/time inputs so they match other Input fields on all mobile browsers */
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"] {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    /* Let the shadcn Input class control all sizing — prevent UA overrides */
+    line-height: inherit;
+  }
+
+  input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+    min-height: 1.25rem;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 0.5;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
 }
 
 @layer utilities {
