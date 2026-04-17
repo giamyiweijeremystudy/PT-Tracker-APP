@@ -907,7 +907,7 @@ export default function Teams() {
   ];
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 pb-10">
+    <div className="w-full min-w-0 max-w-2xl mx-auto space-y-4 pb-10" style={{ overflowX: 'hidden' }}>
 
       {/* ── Team header ── */}
       <div className="rounded-2xl border bg-card p-4 shadow-sm">
@@ -1480,15 +1480,17 @@ export default function Teams() {
                 </CardTitle>
                 <CardDescription>Record your parade state for PT or SFT</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 overflow-hidden">
 
                 {/* Date */}
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <Input type="date" value={subDate} onChange={e => {
-                    setSubDate(e.target.value);
-                    setSubEventId('none');
-                  }} className="w-full min-w-0 block" style={{ maxWidth: '100%', boxSizing: 'border-box' }} />
+                  <div className="w-full overflow-hidden">
+                    <Input type="date" value={subDate} onChange={e => {
+                      setSubDate(e.target.value);
+                      setSubEventId('none');
+                    }} className="w-full min-w-0" />
+                  </div>
                 </div>
 
                 {/* Link to event — only shows events for the selected date */}
