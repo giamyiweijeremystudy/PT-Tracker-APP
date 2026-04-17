@@ -13,8 +13,10 @@ export default function BottomNav() {
   const navigate = useNavigate();
 
   return (
-    <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t">
-      {/* Actual nav buttons — always 64px tall */}
+    <nav
+      className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
+    >
       <div className="flex items-stretch h-16">
         {NAV_ITEMS.map((item) => {
           const active = location.pathname === item.url;
@@ -33,8 +35,6 @@ export default function BottomNav() {
           );
         })}
       </div>
-      {/* Fills the safe-area gap below the nav with the same bg colour */}
-      <div className="bg-card" style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
     </nav>
   );
 }
