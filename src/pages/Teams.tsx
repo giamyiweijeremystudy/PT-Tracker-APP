@@ -653,17 +653,18 @@ export default function Teams() {
     });
 
     if (fmt === 'txt') {
-      const lines = [`Team Submissions - ${team?.name}`, `Downloaded: ${fmtDate(localDateStr())}`, ''];
-      if (filterDate) lines.push(`Date: ${fmtDate(filterDate)}`, '');
+      const lines = [`Parade State — ${filterDate ? fmtDate(filterDate) : fmtDate(localDateStr())}`, ''];
       lines.push(`SUBMITTED (${sorted.length})`);
       sorted.forEach(s => {
-        lines.push(`  ${getName(s)} | ${s.session_type}${s.session_type==='SFT'&&s.sft_type?` (${s.sft_type}${s.sft_custom?'/'+s.sft_custom:''})`:''} | ${s.attendance_status}${s.temperature?` | ${s.temperature}C`:''}${s.notes?` | ${s.notes}`:''}`);
+        const temp = s.temperature ? ` | ${s.temperature}C` : '';
+        const fever = s.temperature && s.temperature >= 37.5 ? ' (fever)' : '';
+        lines.push(`  ${getName(s)} - ${s.session_type} | ${s.attendance_status}${temp}${fever}${s.notes ? ` | ${s.notes}` : ''}`);
       });
       if (notSubmitted.length > 0) {
         lines.push('', `NOT SUBMITTED (${notSubmitted.length})`);
         notSubmitted.forEach(m => lines.push(`  ${getMemberName(m)}`));
       }
-      downloadTxt(`submissions_${team?.name?.replace(/\s+/g,'_')}.txt`, lines);
+      downloadTxt(`parade_state_${filterDate ?? localDateStr()}.txt`, lines);
     } else {
       const rows: string[][] = [['Date','Name','Rank','Session','Attendance','SFT Type','Temperature','Notes']];
       sorted.forEach(s => {
@@ -1440,17 +1441,27 @@ export default function Teams() {
         const statusEmoji: Record<string,string> = { Participating:'✅', 'Light Duty':'⚠️', MC:'🏥', 'On Leave':'🏖️' };
 
         // For popup: build state string for a given date
+        const STATUS_ORDER_TEXT: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3 };
         const buildStateText = (date: string) => {
           const daySubmissions = allSubmissions.filter(s => s.submission_date === date);
           const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
-          const lines: string[] = [`Parade State — ${fmtDate(date)}`, `Team: ${team?.name}`, ''];
-          lines.push(`✅ SUBMITTED (${daySubmissions.length})`);
-          daySubmissions.forEach(s => {
+          const sorted = [...daySubmissions].sort((a, b) => {
+            const od = (STATUS_ORDER_TEXT[a.attendance_status] ?? 99) - (STATUS_ORDER_TEXT[b.attendance_status] ?? 99);
+            if (od !== 0) return od;
+            const na = a.profile ? `${a.profile.rank && a.profile.rank !== 'Other' ? a.profile.rank+' ':'' }${a.profile.full_name}` : '';
+            const nb = b.profile ? `${b.profile.rank && b.profile.rank !== 'Other' ? b.profile.rank+' ':'' }${b.profile.full_name}` : '';
+            return na.localeCompare(nb);
+          });
+          const lines: string[] = [`Parade State — ${fmtDate(date)}`, ''];
+          lines.push(`SUBMITTED (${sorted.length})`);
+          sorted.forEach(s => {
             const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
-            lines.push(`  ${name} — ${s.session_type} | ${s.attendance_status}${s.temperature ? ` | ${s.temperature}°C` : ''}${s.notes ? ` | ${s.notes}` : ''}`);
+            const temp = s.temperature ? ` | ${s.temperature}C` : '';
+            const fever = s.temperature && s.temperature >= 37.5 ? ' (fever)' : '';
+            lines.push(`  ${name} - ${s.session_type} | ${s.attendance_status}${temp}${fever}${s.notes ? ` | ${s.notes}` : ''}`);
           });
           if (notSub.length > 0) {
-            lines.push('', `❌ NOT SUBMITTED (${notSub.length})`);
+            lines.push('', `NOT SUBMITTED (${notSub.length})`);
             notSub.forEach(m => {
               const p = m.profile;
               lines.push(`  ${p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}${p?.full_name ?? 'Member'}`);
@@ -1744,20 +1755,30 @@ export default function Teams() {
                     ) : (
                       sortedSubmissions.map(s => {
                         const name = getName(s);
+                        const isFever = s.temperature != null && s.temperature >= 37.5;
                         return (
                           <div key={s.id} className="flex items-start justify-between gap-2 px-3 py-2.5">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs font-medium">{name}</span>
+                                <span className={`text-xs font-medium ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</span>
                                 <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
                                 <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
+                                {isFever && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700">
+                                    fever
+                                  </span>
+                                )}
                               </div>
                               {s.session_type === 'SFT' && s.sft_type && (
                                 <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>
                               )}
                               {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
                             </div>
-                            {s.temperature && <span className="text-xs text-muted-foreground shrink-0">{s.temperature}°C</span>}
+                            {s.temperature && (
+                              <span className={`text-xs shrink-0 font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                {s.temperature}°C
+                              </span>
+                            )}
                           </div>
                         );
                       })
@@ -2225,11 +2246,13 @@ export default function Teams() {
           const nb = `${b.profile?.rank && b.profile.rank !== 'Other' ? b.profile.rank+' ':'' }${b.profile?.full_name ?? ''}`;
           return na.localeCompare(nb);
         });
-        const lines: string[] = [`Parade State - ${fmtDate(submissionPopupDate)}`, `Team: ${team?.name}`, ''];
+        const lines: string[] = [`Parade State - ${fmtDate(submissionPopupDate)}`, ''];
         lines.push(`SUBMITTED (${sortedDaySubs.length})`);
         sortedDaySubs.forEach(s => {
           const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
-          lines.push(`  ${name} - ${s.session_type} | ${s.attendance_status}${s.temperature ? ` | ${s.temperature}C` : ''}${s.notes ? ` | ${s.notes}` : ''}`);
+          const temp = s.temperature ? ` | ${s.temperature}C` : '';
+          const fever = s.temperature && s.temperature >= 37.5 ? ' (fever)' : '';
+          lines.push(`  ${name} - ${s.session_type} | ${s.attendance_status}${temp}${fever}${s.notes ? ` | ${s.notes}` : ''}`);
         });
         lines.push('');
         lines.push(`NOT SUBMITTED (${sortedNotSub.length})`);
@@ -2271,6 +2294,7 @@ export default function Teams() {
                     <div className="space-y-1.5">
                       {sortedDaySubs.map(s => {
                         const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
+                        const isFever = s.temperature != null && s.temperature >= 37.5;
                         const statusColor: Record<string,string> = {
                           'Participating': 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
                           'Light Duty':    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
@@ -2278,13 +2302,20 @@ export default function Teams() {
                           'On Leave':      'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
                         };
                         return (
-                          <div key={s.id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                          <div key={s.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${isFever ? 'bg-red-50 dark:bg-red-950/30' : 'bg-muted/50'}`}>
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold truncate">{name}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className={`text-xs font-semibold truncate ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</p>
+                                {isFever && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700 shrink-0">fever</span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-muted-foreground">{s.session_type}{s.notes ? ` · ${s.notes}` : ''}</p>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              {s.temperature && <span className="text-[10px] text-muted-foreground">{s.temperature}°C</span>}
+                              {s.temperature && (
+                                <span className={`text-[10px] font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>{s.temperature}°C</span>
+                              )}
                               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor[s.attendance_status] ?? 'bg-muted text-muted-foreground'}`}>
                                 {s.attendance_status}
                               </span>
