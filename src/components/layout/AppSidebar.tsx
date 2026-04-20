@@ -1,4 +1,4 @@
-import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings, Activity, Users, CalendarDays, MessageSquare, BookMarked, BookOpen, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Calculator, User, LogOut, Shield, Settings, Activity, Users, CalendarDays, MessageSquare, BookMarked, BookOpen, TrendingUp, ShieldCheck } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,6 +33,7 @@ export function AppSidebar() {
   const [settingsTaps, setSettingsTaps] = useState(0);
 
   const isActive = (path: string) => location.pathname === path;
+  const isAppAdmin = (profile as any)?.is_admin === true;
 
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
 
@@ -84,6 +85,30 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Admin Panel — only for app admins */}
+        {isAppAdmin && (
+          <SidebarGroup className="mt-auto">
+            <SidebarGroupContent>
+              <div className={`mx-2 mb-2 rounded-xl border-2 border-violet-400 dark:border-violet-600 bg-violet-50/60 dark:bg-violet-950/30 ${collapsed ? 'p-1' : 'p-1.5'}`}>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive('/admin')}
+                      className="text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 data-[active=true]:bg-violet-200 dark:data-[active=true]:bg-violet-900/60"
+                    >
+                      <NavLink to="/admin" end>
+                        <ShieldCheck className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                        {!collapsed && <span className="font-semibold">Admin Panel</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </div>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
