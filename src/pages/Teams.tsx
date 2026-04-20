@@ -1774,11 +1774,9 @@ export default function Teams() {
                               )}
                               {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
                             </div>
-                            {s.temperature && (
-                              <span className={`text-xs shrink-0 font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                                {s.temperature}°C
-                              </span>
-                            )}
+                            <span className={`text-xs shrink-0 font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                              {s.temperature != null ? `${s.temperature}°C` : '—'}
+                            </span>
                           </div>
                         );
                       })
@@ -2313,7 +2311,7 @@ export default function Teams() {
                               <p className="text-[10px] text-muted-foreground">{s.session_type}{s.notes ? ` · ${s.notes}` : ''}</p>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              {s.temperature && (
+                              {s.temperature != null && (
                                 <span className={`text-[10px] font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>{s.temperature}°C</span>
                               )}
                               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor[s.attendance_status] ?? 'bg-muted text-muted-foreground'}`}>
