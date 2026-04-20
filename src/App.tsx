@@ -20,6 +20,7 @@ import Chat from "./pages/Chat";
 import TrainingProgrammes from "./pages/TrainingProgrammes";
 import UsefulInfo from "./pages/UsefulInfo";
 import ProgressTracker from "./pages/ProgressTracker";
+import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -50,6 +51,7 @@ const App = () => (
             <Route path="/useful-info"       element={<P><UsefulInfo /></P>} />
             <Route path="/progress"          element={<P><ProgressTracker /></P>} />
             <Route path="/chat"            element={<P><Chat /></P>} />
+            <Route path="/admin"           element={<P><AdminPanel /></P>} />
             <Route path="*"                 element={<NotFound />} />
           </Routes>
         </TeamProvider>
