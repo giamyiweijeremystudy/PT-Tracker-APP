@@ -76,17 +76,10 @@ const ACTIVITY_LEVELS=[
   {value:'1.9',  label:'Extra Active (physical job + training)'},
 ];
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type IpptResult={id:string;user_id:string;age:number;pushups:number;situps:number;run_seconds:number;pu_pts:number;su_pts:number;run_pts:number;total:number;award:string;created_at:string;};
 type BmiResult={id:string;user_id:string;height_cm:number;weight_kg:number;bmi:number;category:string;created_at:string;};
-
 type Tab = 'ippt' | 'bmi' | 'calorie';
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-
-// ─── DD/MM/YYYY date formatter ───────────────────────────────────────────────
 function fmtDate(dateStr: string, opts?: { weekday?: boolean; year?: boolean }): string {
   const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
   const date = new Date(y, m - 1, d);
@@ -100,6 +93,41 @@ function fmtDate(dateStr: string, opts?: { weekday?: boolean; year?: boolean }):
   return `${dd}/${mm}/${y}`;
 }
 
+// ─── Numeric input that lets user type freely, only clamps on blur ─────────────
+function NumInput({
+  value, onChange, min, max, step = 1, className = '',
+}: {
+  value: number; onChange: (v: number) => void;
+  min: number; max: number; step?: number; className?: string;
+}) {
+  const [raw, setRaw] = useState(String(value));
+  // Keep raw in sync when slider drives the value
+  useEffect(() => { setRaw(String(value)); }, [value]);
+
+  return (
+    <input
+      type="number"
+      inputMode="numeric"
+      min={min} max={max} step={step}
+      value={raw}
+      onChange={e => {
+        setRaw(e.target.value);
+        // Update live only if it's a valid in-range number
+        const n = step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value);
+        if (!isNaN(n) && n >= min && n <= max) onChange(n);
+      }}
+      onBlur={() => {
+        // Clamp on blur so display always shows a valid value
+        const n = step < 1 ? parseFloat(raw) : parseInt(raw);
+        const clamped = isNaN(n) ? min : Math.min(max, Math.max(min, n));
+        onChange(clamped);
+        setRaw(String(clamped));
+      }}
+      className={`rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring ${className}`}
+    />
+  );
+}
+
 export default function Calculators() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
@@ -109,7 +137,9 @@ export default function Calculators() {
   const [ipptAge, setIpptAge] = useState(22);
   const [pushups, setPushups] = useState(30);
   const [situps, setSitups]   = useState(30);
-  const [runSecs, setRunSecs] = useState(720); // seconds, 4:00–40:00
+  const [runSecs, setRunSecs] = useState(720);
+  const [runMins, setRunMins] = useState(12);
+  const [runSecPart, setRunSecPart] = useState(0);
   const [ipptSaved, setIpptSaved] = useState<IpptResult[]>([]);
   const [ipptSaving, setIpptSaving] = useState(false);
   const [ipptDeleting, setIpptDeleting] = useState<string|null>(null);
@@ -130,7 +160,18 @@ export default function Calculators() {
   const [calGoal, setCalGoal] = useState('maintain');
   const [calResult, setCalResult] = useState<{bmr:number;tdee:number;target:number}|null>(null);
 
-  // Pre-fill from profile
+  // Sync run mins+secs → runSecs
+  useEffect(() => {
+    setRunSecs(runMins * 60 + runSecPart);
+  }, [runMins, runSecPart]);
+
+  // Sync runSecs (from slider) → mins+secs display
+  const handleRunSlider = (v: number) => {
+    setRunSecs(v);
+    setRunMins(Math.floor(v / 60));
+    setRunSecPart(v % 60);
+  };
+
   useEffect(() => {
     if (profile?.age) { setIpptAge(Math.min(60,Math.max(18,profile.age))); setCalAge(String(profile.age)); }
     if (profile?.height_cm) { setHeight(Math.min(220,Math.max(100,profile.height_cm))); setCalHeight(String(profile.height_cm)); }
@@ -147,9 +188,8 @@ export default function Calculators() {
     if (data) setBmiSaved(data as BmiResult[]);
   };
 
-  // ── IPPT handlers ─────────────────────────────────────────────────────────────
-  // Live IPPT result — no calculate button needed
   const ipptResult = calcIppt(pushups, situps, runSecs, ipptAge);
+
   const saveIppt = async () => {
     if(!user)return;
     setIpptSaving(true);
@@ -166,8 +206,6 @@ export default function Calculators() {
     else{toast({title:'Deleted'});fetchIpptSaved();}
   };
 
-  // ── BMI handlers ──────────────────────────────────────────────────────────────
-  // Live BMI
   const bmi = weight / ((height/100)**2);
   const saveBmi = async () => {
     if(!user)return;
@@ -186,7 +224,6 @@ export default function Calculators() {
     else{toast({title:'Deleted'});fetchBmiSaved();}
   };
 
-  // ── Calorie handler ───────────────────────────────────────────────────────────
   const calculateCalories = () => {
     const a=parseInt(calAge)||0,h=parseFloat(calHeight)||0,w=parseFloat(calWeight)||0;
     if(!a||!h||!w){toast({title:'Fill in all fields',variant:'destructive'});return;}
@@ -196,7 +233,6 @@ export default function Calculators() {
     setCalResult({bmr:Math.round(bmr),tdee:Math.round(tdee),target:Math.round(target)});
   };
 
-  // ── Graph data ────────────────────────────────────────────────────────────────
   const ipptGraph = ipptSaved.map((r,i)=>({name:fmtDate(r.created_at.slice(0,10), { year: false }),attempt:i+1,total:r.total,pushups:r.pu_pts,situps:r.su_pts,run:r.run_pts}));
   const bmiGraph  = bmiSaved.map(r=>({name:fmtDate(r.created_at.slice(0,10), { year: false }),bmi:r.bmi,weight:r.weight_kg}));
 
@@ -204,6 +240,9 @@ export default function Calculators() {
   const bmiPct = Math.min(100,Math.max(0,((bmi-10)/30)*100));
   const fmtRunTime=(s:number)=>`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
   const ageGroupLabel=(a:number)=>AGE_GROUPS.find(g=>a>=g.min&&a<=g.max)?.label??`Age ${a}`;
+
+  // Shared input style
+  const numInputCls = 'w-16 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring';
 
   const TABS: {id: Tab; label: string; icon: React.ReactNode}[] = [
     { id: 'ippt',    label: 'IPPT',    icon: <Timer className="h-4 w-4" /> },
@@ -214,26 +253,16 @@ export default function Calculators() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
 
-      {/* Header */}
       <div className="flex items-center gap-3">
         <Calculator className="h-7 w-7 text-primary" />
         <h1 className="text-2xl font-bold text-foreground">Calculators</h1>
       </div>
 
-      {/* Tab switcher */}
       <div className="flex rounded-xl border overflow-hidden">
         {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-background text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {t.icon}
-            {t.label}
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${tab === t.id ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+            {t.icon}{t.label}
           </button>
         ))}
       </div>
@@ -246,60 +275,54 @@ export default function Calculators() {
               <CardTitle>IPPT Score Calculator</CardTitle>
               <CardDescription>Official SAF scoring — results vary by age group</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
+
               {/* Age */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <Label>Age <span className="text-xs font-normal text-muted-foreground">({ageGroupLabel(ipptAge)})</span></Label>
-                  <input type="number" min={18} max={60} value={ipptAge}
-                    onChange={e=>setIpptAge(Math.min(60,Math.max(18,parseInt(e.target.value)||18)))}
-                    className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                  <NumInput value={ipptAge} onChange={setIpptAge} min={18} max={60} className={numInputCls} />
                 </div>
                 <Slider min={18} max={60} step={1} value={[ipptAge]} onValueChange={([v])=>setIpptAge(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>18</span><span>60</span></div>
               </div>
+
               {/* Push-ups */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <Label>Push-ups <span className="text-xs font-normal text-muted-foreground">(max 25 pts)</span></Label>
-                  <input type="number" min={0} max={100} value={pushups}
-                    onChange={e=>setPushups(Math.min(100,Math.max(0,parseInt(e.target.value)||0)))}
-                    className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                  <NumInput value={pushups} onChange={setPushups} min={0} max={100} className={numInputCls} />
                 </div>
                 <Slider min={0} max={100} step={1} value={[pushups]} onValueChange={([v])=>setPushups(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>0</span><span>100</span></div>
               </div>
+
               {/* Sit-ups */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <Label>Sit-ups <span className="text-xs font-normal text-muted-foreground">(max 25 pts)</span></Label>
-                  <input type="number" min={0} max={100} value={situps}
-                    onChange={e=>setSitups(Math.min(100,Math.max(0,parseInt(e.target.value)||0)))}
-                    className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                  <NumInput value={situps} onChange={setSitups} min={0} max={100} className={numInputCls} />
                 </div>
                 <Slider min={0} max={100} step={1} value={[situps]} onValueChange={([v])=>setSitups(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>0</span><span>100</span></div>
               </div>
-              {/* Run — type MM:SS, slider in seconds per-second */}
+
+              {/* Run — MM:SS inputs + slider */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <Label>2.4km Run <span className="text-xs font-normal text-muted-foreground">(max 50 pts)</span></Label>
                   <div className="flex items-center gap-1">
-                    <input type="number" min={0} max={39} value={Math.floor(runSecs/60)}
-                      onChange={e=>{const m=Math.min(39,Math.max(0,parseInt(e.target.value)||0));setRunSecs(Math.min(2400,Math.max(240,m*60+(runSecs%60))));}}
-                      className="w-14 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
-                    <span className="text-muted-foreground font-bold">:</span>
-                    <input type="number" min={0} max={59} value={String(runSecs%60).padStart(2,'0')}
-                      onChange={e=>{const s=Math.min(59,Math.max(0,parseInt(e.target.value)||0));setRunSecs(Math.min(2400,Math.max(240,Math.floor(runSecs/60)*60+s)));}}
-                      className="w-14 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <NumInput value={runMins} onChange={v => { setRunMins(v); setRunSecs(v * 60 + runSecPart); }} min={4} max={40} className={numInputCls} />
+                    <span className="text-muted-foreground font-bold text-sm">:</span>
+                    <NumInput value={runSecPart} onChange={v => { setRunSecPart(v); setRunSecs(runMins * 60 + v); }} min={0} max={59} className={numInputCls} />
                     <span className="text-xs text-muted-foreground">mm:ss</span>
                   </div>
                 </div>
-                <Slider min={240} max={2400} step={1} value={[runSecs]} onValueChange={([v])=>setRunSecs(v)} />
+                <Slider min={240} max={2400} step={1} value={[runSecs]} onValueChange={([v]) => handleRunSlider(v)} />
                 <div className="flex justify-between text-xs text-muted-foreground"><span>4:00 (fastest)</span><span>40:00 (slowest)</span></div>
               </div>
 
-              {/* Live result — always shown */}
+              {/* Live result */}
               {(() => {
                 const style=IPPT_STYLE[ipptResult.award];
                 return (
@@ -338,8 +361,7 @@ export default function Calculators() {
                     </Button>
                   </div>
                 );
-              })()
-            }
+              })()}
             </CardContent>
           </Card>
 
@@ -416,15 +438,13 @@ export default function Calculators() {
               <CardTitle>BMI Calculator</CardTitle>
               <CardDescription>Body Mass Index based on height and weight</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
               {/* Height */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <Label>Height</Label>
-                  <div className="flex items-center gap-1">
-                    <input type="number" min={100} max={220} value={height}
-                      onChange={e=>setHeight(Math.min(220,Math.max(100,parseInt(e.target.value)||100)))}
-                      className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                  <div className="flex items-center gap-1.5">
+                    <NumInput value={height} onChange={setHeight} min={100} max={220} className={numInputCls} />
                     <span className="text-xs text-muted-foreground">cm</span>
                   </div>
                 </div>
@@ -435,10 +455,8 @@ export default function Calculators() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <Label>Weight</Label>
-                  <div className="flex items-center gap-1">
-                    <input type="number" min={30} max={200} step={0.1} value={weight}
-                      onChange={e=>setWeight(Math.min(200,Math.max(30,parseFloat(e.target.value)||30)))}
-                      className="w-20 rounded-md border border-input bg-background px-2 py-1 text-sm text-right font-bold tabular-nums focus:outline-none focus:ring-1 focus:ring-ring" />
+                  <div className="flex items-center gap-1.5">
+                    <NumInput value={weight} onChange={setWeight} min={30} max={200} step={0.1} className={numInputCls} />
                     <span className="text-xs text-muted-foreground">kg</span>
                   </div>
                 </div>
@@ -446,41 +464,39 @@ export default function Calculators() {
                 <div className="flex justify-between text-xs text-muted-foreground"><span>30</span><span>200</span></div>
               </div>
 
-              {(
-                <div className="rounded-xl border p-5 space-y-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className={`text-5xl font-bold ${bmiCat.text}`}>{bmi.toFixed(1)}</div>
-                      <div className="text-sm text-muted-foreground mt-1">kg/m²</div>
-                    </div>
-                    <span className={`text-sm font-bold px-4 py-2 rounded-full ${bmiCat.bg} ${bmiCat.text}`}>{bmiCat.label}</span>
+              <div className="rounded-xl border p-5 space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className={`text-5xl font-bold ${bmiCat.text}`}>{bmi.toFixed(1)}</div>
+                    <div className="text-sm text-muted-foreground mt-1">kg/m²</div>
                   </div>
-                  <div className="space-y-1">
-                    <div className="relative h-4 rounded-full overflow-hidden flex">
-                      <div className="flex-none w-[28.3%] bg-blue-400"/>
-                      <div className="flex-none w-[21.7%] bg-green-400"/>
-                      <div className="flex-none w-[16.7%] bg-orange-400"/>
-                      <div className="flex-1 bg-red-400"/>
-                      <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-md" style={{left:`${bmiPct}%`}}/>
-                    </div>
-                    <div className="flex justify-between text-xs text-muted-foreground px-0.5">
-                      <span>10</span><span>18.5</span><span>25</span><span>30</span><span>40+</span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 text-xs">
-                    {BMI_CATS.map(c=>(
-                      <div key={c.label} className={`rounded-lg p-2 text-center ${bmiCat.label===c.label?`${c.bg} ${c.text} font-semibold`:'bg-muted text-muted-foreground'}`}>
-                        <div className="font-medium">{c.label}</div>
-                        <div className="opacity-70">{c.max===100?'≥ 30':`${c.min}–${c.max}`}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {(()=>{const h=height/100;return(<p className="text-xs text-muted-foreground text-center">Healthy weight for {height}cm: <span className="font-medium text-foreground">{(18.5*h*h).toFixed(1)} – {(24.9*h*h).toFixed(1)} kg</span></p>);})()}
-                  <Button onClick={saveBmi} disabled={bmiSaving} variant="outline" className="w-full">
-                    <Save className="h-4 w-4 mr-2"/>{bmiSaving?'Saving...':'Save Result'}
-                  </Button>
+                  <span className={`text-sm font-bold px-4 py-2 rounded-full ${bmiCat.bg} ${bmiCat.text}`}>{bmiCat.label}</span>
                 </div>
-              )}
+                <div className="space-y-1">
+                  <div className="relative h-4 rounded-full overflow-hidden flex">
+                    <div className="flex-none w-[28.3%] bg-blue-400"/>
+                    <div className="flex-none w-[21.7%] bg-green-400"/>
+                    <div className="flex-none w-[16.7%] bg-orange-400"/>
+                    <div className="flex-1 bg-red-400"/>
+                    <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-md" style={{left:`${bmiPct}%`}}/>
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground px-0.5">
+                    <span>10</span><span>18.5</span><span>25</span><span>30</span><span>40+</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-xs">
+                  {BMI_CATS.map(c=>(
+                    <div key={c.label} className={`rounded-lg p-2 text-center ${bmiCat.label===c.label?`${c.bg} ${c.text} font-semibold`:'bg-muted text-muted-foreground'}`}>
+                      <div className="font-medium">{c.label}</div>
+                      <div className="opacity-70">{c.max===100?'≥ 30':`${c.min}–${c.max}`}</div>
+                    </div>
+                  ))}
+                </div>
+                {(()=>{const h=height/100;return(<p className="text-xs text-muted-foreground text-center">Healthy weight for {height}cm: <span className="font-medium text-foreground">{(18.5*h*h).toFixed(1)} – {(24.9*h*h).toFixed(1)} kg</span></p>);})()}
+                <Button onClick={saveBmi} disabled={bmiSaving} variant="outline" className="w-full">
+                  <Save className="h-4 w-4 mr-2"/>{bmiSaving?'Saving...':'Save Result'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
