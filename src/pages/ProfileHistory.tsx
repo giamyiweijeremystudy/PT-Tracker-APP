@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useTeam } from '@/contexts/TeamContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -492,7 +493,8 @@ const STAT_DEFS: StatDef[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ProfileStatistics() {
-  const { roles, user } = useAuth();
+  const { roles, user, profile: authProfile } = useAuth();
+  const { myTeamRole, myRole } = useTeam();
   const { toast } = useToast();
 
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
@@ -569,6 +571,17 @@ export default function ProfileStatistics() {
     : null;
   const initials = profileData?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
 
+  // Derive a single display role label in priority order
+  const isAppAdmin = (authProfile as any)?.is_admin === true;
+  const teamRoleArr: string[] = Array.isArray(myTeamRole) ? myTeamRole : [];
+  const displayRole: { label: string; style: string } = (() => {
+    if (isAppAdmin) return { label: 'Admin', style: 'bg-yellow-100 text-yellow-800 border border-yellow-300' };
+    if (teamRoleArr.includes('admin')) return { label: 'Admin', style: 'bg-yellow-100 text-yellow-800 border border-yellow-300' };
+    if (teamRoleArr.includes('pt_ic')) return { label: 'PTIC', style: 'bg-blue-100 text-blue-800 border border-blue-300' };
+    if (teamRoleArr.includes('spartan')) return { label: 'Spartan', style: 'bg-red-100 text-red-800 border border-red-300' };
+    return { label: 'Spartan', style: 'bg-muted text-muted-foreground border border-border' };
+  })();
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
 
@@ -640,32 +653,33 @@ export default function ProfileStatistics() {
 
       {/* Profile card */}
       <Card>
-        <CardContent className="flex items-center gap-4 p-6">
-          <Avatar className="h-16 w-16">
+        <CardContent className="flex items-center gap-4 p-5">
+          <Avatar className="h-16 w-16 shrink-0">
             <AvatarFallback className="bg-primary text-primary-foreground text-xl">{initials}</AvatarFallback>
           </Avatar>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl font-bold text-foreground">
+              <h2 className="text-xl font-bold text-foreground truncate">
                 {profileData?.rank && profileData.rank !== 'Other' ? `${profileData.rank} ` : ''}
                 {profileData?.full_name || 'User'}
               </h2>
               {ippt && (ippt.award === 'Gold' || ippt.award === 'Silver') && (
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${AWARD_STYLE[ippt.award]}`}>
                   IPPT {ippt.award}
                 </span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground">{profileData?.department} Department</p>
-            {(profileData?.age || profileData?.height_cm) && (
-              <p className="text-sm text-muted-foreground">
-                {profileData.age ? `Age: ${profileData.age}` : ''}
-                {profileData.age && profileData.height_cm ? ' · ' : ''}
-                {profileData.height_cm ? `Height: ${profileData.height_cm}cm` : ''}
-              </p>
-            )}
-            <div className="flex gap-2 mt-2 flex-wrap">
-              {roles.map(r => <Badge key={r} variant="secondary">{r}</Badge>)}
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${displayRole.style}`}>
+                {displayRole.label}
+              </span>
+              {(profileData?.age || profileData?.height_cm) && (
+                <span className="text-xs text-muted-foreground">
+                  {profileData.age ? `Age ${profileData.age}` : ''}
+                  {profileData.age && profileData.height_cm ? ' · ' : ''}
+                  {profileData.height_cm ? `${profileData.height_cm}cm` : ''}
+                </span>
+              )}
             </div>
           </div>
         </CardContent>
@@ -719,31 +733,42 @@ export default function ProfileStatistics() {
 
       {/* Activity Statistics */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Activity Statistics</CardTitle>
+        <CardHeader className="pb-3">
+          <div className="space-y-3">
+            <CardTitle className="text-base">Activity Statistics</CardTitle>
             {activities.length > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Week / Month toggle */}
                 <div className="flex rounded-lg border overflow-hidden text-sm">
-                  <button className={`px-3 py-1 ${graphView === 'week' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`} onClick={() => setGraphView('week')}>Week</button>
-                  <button className={`px-3 py-1 ${graphView === 'month' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`} onClick={() => setGraphView('month')}>Month</button>
+                  <button
+                    className={`px-3 py-1.5 font-medium transition-colors ${graphView === 'week' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
+                    onClick={() => setGraphView('week')}
+                  >
+                    Week
+                  </button>
+                  <button
+                    className={`px-3 py-1.5 font-medium transition-colors ${graphView === 'month' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
+                    onClick={() => setGraphView('month')}
+                  >
+                    Month
+                  </button>
                 </div>
-                {/* Select stats button */}
+                {/* Select stats */}
                 <Dialog open={selectOpen} onOpenChange={setSelectOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <SlidersHorizontal className="h-4 w-4 mr-1" />
+                    <Button variant="outline" size="sm" className="h-8 text-xs">
+                      <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
                       Select Stats
                       {selectedStats.size > 0 && (
-                        <span className="ml-1.5 bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5">
+                        <span className="ml-1.5 bg-primary text-primary-foreground text-[10px] rounded-full px-1.5 py-0.5 leading-none">
                           {selectedStats.size}
                         </span>
                       )}
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-sm">
-                    <DialogHeader><DialogTitle>Select Statistics to Display</DialogTitle></DialogHeader>
-                    <div className="space-y-2 pt-2">
+                  <DialogContent className="max-w-sm mx-4">
+                    <DialogHeader><DialogTitle>Select Statistics</DialogTitle></DialogHeader>
+                    <div className="space-y-2 pt-2 max-h-[60dvh] overflow-y-auto">
                       {availableStats.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">No activities logged yet.</p>
                       ) : (
@@ -757,9 +782,9 @@ export default function ProfileStatistics() {
                                 isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
                               }`}
                             >
-                              <div>
+                              <div className="min-w-0 flex-1">
                                 <div className="text-sm font-medium text-foreground">{stat.label}</div>
-                                <div className="text-xs text-muted-foreground">{stat.description}</div>
+                                <div className="text-xs text-muted-foreground truncate">{stat.description}</div>
                               </div>
                               {isSelected && <Check className="h-4 w-4 text-primary shrink-0 ml-2" />}
                             </button>
@@ -782,7 +807,7 @@ export default function ProfileStatistics() {
           {activities.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">No activities logged yet.</p>
           ) : visibleStats.length === 0 ? (
-            <div className="text-center py-8 space-y-2">
+            <div className="text-center py-8 space-y-3">
               <p className="text-sm text-muted-foreground">No statistics selected.</p>
               <Button variant="outline" size="sm" onClick={() => setSelectOpen(true)}>
                 <SlidersHorizontal className="h-4 w-4 mr-1" /> Select Stats to Display
