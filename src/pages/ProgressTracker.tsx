@@ -121,16 +121,15 @@ function AddExerciseModal({
         style={{ pointerEvents: 'auto' }}
         onClick={onClose}
       />
-      {/* Floating sheet — margin on all sides, fully rounded */}
+      {/* Floating sheet — inset on all sides so it never overflows */}
       <div
-        className="absolute inset-x-0 mx-auto w-full max-w-lg bg-background rounded-2xl shadow-2xl flex flex-col"
+        className="absolute mx-auto bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         style={{
           pointerEvents: 'auto',
-          maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-top, 0px) - 36px)',
+          top: 'calc(env(safe-area-inset-top, 0px) + 24px)',
           bottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 16px)',
           left: '16px',
           right: '16px',
-          width: 'auto',
         }}
       >
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b shrink-0">
