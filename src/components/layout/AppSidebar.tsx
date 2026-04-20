@@ -33,7 +33,7 @@ export function AppSidebar() {
   const [settingsTaps, setSettingsTaps] = useState(0);
 
   const isActive = (path: string) => location.pathname === path;
-  const isAppAdmin = (profile as any)?.is_admin === true;
+  const isAppAdmin = profile !== null && (profile as any)?.is_admin === true;
 
   const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?';
 
