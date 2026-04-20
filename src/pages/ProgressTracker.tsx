@@ -121,22 +121,19 @@ function AddExerciseModal({
         style={{ pointerEvents: 'auto' }}
         onClick={onClose}
       />
-      {/* Bottom sheet — max height stops above bottom nav */}
+      {/* Floating sheet — margin on all sides, fully rounded */}
       <div
-        className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-lg bg-background rounded-t-2xl shadow-2xl flex flex-col"
+        className="absolute inset-x-0 mx-auto w-full max-w-lg bg-background rounded-2xl shadow-2xl flex flex-col"
         style={{
           pointerEvents: 'auto',
-          maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-top, 0px) - 12px)',
-          bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))',
+          maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-top, 0px) - 36px)',
+          bottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 16px)',
+          left: '16px',
+          right: '16px',
+          width: 'auto',
         }}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-2.5 shrink-0">
-          <div className="w-9 h-1 rounded-full bg-muted-foreground/25" />
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-2 pb-3 border-b shrink-0">
+        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b shrink-0">
           <h2 className="text-base font-bold">Add Exercise</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
             <X className="h-4 w-4" />
