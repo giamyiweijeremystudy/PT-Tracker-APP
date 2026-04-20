@@ -114,34 +114,41 @@ function AddExerciseModal({
   const updateMetric = (i: number, v: string) => setMetricInputs((p) => p.map((m, j) => j === i ? v : m));
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 sm:p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-[70]" style={{ pointerEvents: 'none' }}>
+      {/* Backdrop */}
       <div
-        className="w-full sm:max-w-lg bg-background rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col"
+        className="absolute inset-0 bg-black/60"
+        style={{ pointerEvents: 'auto' }}
+        onClick={onClose}
+      />
+      {/* Bottom sheet — max height stops above bottom nav */}
+      <div
+        className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-lg bg-background rounded-t-2xl shadow-2xl flex flex-col"
         style={{
-          maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-bottom, 16px) - env(safe-area-inset-top, 0px))',
+          pointerEvents: 'auto',
+          maxHeight: 'calc(100dvh - 64px - env(safe-area-inset-top, 0px) - 12px)',
+          bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
-        {/* Drag handle (mobile) */}
-        <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
-          <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+        {/* Drag handle */}
+        <div className="flex justify-center pt-2.5 shrink-0">
+          <div className="w-9 h-1 rounded-full bg-muted-foreground/25" />
         </div>
 
-        <div className="flex items-center justify-between px-5 pt-2 sm:pt-5 pb-4 border-b shrink-0">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 pt-2 pb-3 border-b shrink-0">
           <h2 className="text-base font-bold">Add Exercise</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-5 overflow-y-auto flex-1 overscroll-contain">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4 min-h-0">
 
           {/* Preset grid */}
-          <div className="space-y-2">
-            <Label>Select type</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Select type</Label>
             <div className="grid grid-cols-2 gap-2">
               {PRESETS.map((p) => (
                 <button
@@ -154,8 +161,8 @@ function AddExerciseModal({
                       : 'border-border bg-background hover:bg-muted')
                   }
                 >
-                  <span className="text-sm">{p.emoji}</span>
-                  {p.label}
+                  <span>{p.emoji}</span>
+                  <span className="truncate">{p.label}</span>
                 </button>
               ))}
               <button
@@ -167,8 +174,8 @@ function AddExerciseModal({
                     : 'border-border bg-background hover:bg-muted')
                 }
               >
-                <span className="text-sm">✏️</span>
-                Custom
+                <span>✏️</span>
+                <span>Custom</span>
               </button>
             </div>
           </div>
@@ -177,21 +184,12 @@ function AddExerciseModal({
           {isCustom && (
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label>Emoji</Label>
-                <Input
-                  placeholder="🏅"
-                  value={customEmoji}
-                  onChange={(e) => setCustomEmoji(e.target.value)}
-                  maxLength={2}
-                />
+                <Label className="text-xs">Emoji</Label>
+                <Input placeholder="🏅" value={customEmoji} onChange={(e) => setCustomEmoji(e.target.value)} maxLength={2} />
               </div>
               <div className="col-span-2 space-y-1.5">
-                <Label>Exercise name</Label>
-                <Input
-                  placeholder="e.g. Deadlift"
-                  value={customLabel}
-                  onChange={(e) => setCustomLabel(e.target.value)}
-                />
+                <Label className="text-xs">Exercise name</Label>
+                <Input placeholder="e.g. Deadlift" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} />
               </div>
             </div>
           )}
@@ -200,46 +198,37 @@ function AddExerciseModal({
           {selected && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Metrics to track</Label>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Metrics to track</Label>
                 {!isCustom && (
-                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                    Pre-filled · edit as needed
-                  </span>
+                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">pre-filled</span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Name each value you want to log, e.g. Reps, Weight (kg), Time (min)
-              </p>
               {metricInputs.map((m, i) => (
                 <div key={i} className="flex gap-2">
                   <Input
-                    placeholder={'Metric ' + (i + 1)}
+                    placeholder={`Metric ${i + 1} — e.g. Reps`}
                     value={m}
                     onChange={(e) => updateMetric(i, e.target.value)}
                   />
                   {metricInputs.length > 1 && (
-                    <button
-                      onClick={() => removeMetric(i)}
-                      className="p-2 rounded hover:bg-muted text-muted-foreground"
-                    >
+                    <button onClick={() => removeMetric(i)} className="p-2 rounded hover:bg-muted text-muted-foreground shrink-0">
                       <X className="h-4 w-4" />
                     </button>
                   )}
                 </div>
               ))}
               {metricInputs.length < 6 && (
-                <Button variant="outline" size="sm" onClick={addMetric}>
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Add metric
-                </Button>
+                <button onClick={addMetric} className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium py-1">
+                  <Plus className="h-3.5 w-3.5" /> Add metric
+                </button>
               )}
             </div>
           )}
+        </div>
 
-          <Button
-            onClick={handleCreate}
-            disabled={saving || !selected}
-            className="w-full"
-          >
+        {/* Sticky footer */}
+        <div className="px-4 pt-3 pb-4 border-t shrink-0 bg-background">
+          <Button onClick={handleCreate} disabled={saving || !selected} className="w-full">
             {saving ? 'Creating...' : 'Create Exercise'}
           </Button>
         </div>
