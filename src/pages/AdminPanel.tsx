@@ -21,14 +21,14 @@ interface UserRow {
   created_at: string;
   full_name: string;
   rank: string;
-  department: string;
+
   is_admin: boolean;
 }
 
 interface EditState {
   full_name: string;
   rank: string;
-  department: string;
+
   is_admin: boolean;
 }
 
@@ -67,7 +67,7 @@ export default function AdminPanel() {
     // Fetch all profiles
     const { data: profiles, error } = await supabase
       .from('profiles')
-      .select('id, full_name, rank, department, is_admin, created_at')
+      .select('id, full_name, rank, is_admin, created_at')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -90,7 +90,6 @@ export default function AdminPanel() {
       created_at: p.created_at,
       full_name: p.full_name ?? '',
       rank: p.rank ?? '',
-      department: p.department ?? '',
       is_admin: p.is_admin ?? false,
     }));
 
@@ -102,7 +101,7 @@ export default function AdminPanel() {
 
   const startEdit = (u: UserRow) => {
     setEditingId(u.id);
-    setEditState({ full_name: u.full_name, rank: u.rank, department: u.department, is_admin: u.is_admin });
+    setEditState({ full_name: u.full_name, rank: u.rank, is_admin: u.is_admin });
   };
 
   const cancelEdit = () => { setEditingId(null); setEditState(null); };
@@ -113,7 +112,6 @@ export default function AdminPanel() {
     const { error } = await supabase.from('profiles').update({
       full_name: editState.full_name,
       rank: editState.rank,
-      department: editState.department,
       is_admin: editState.is_admin,
     }).eq('id', editingId);
     setSaving(false);
@@ -225,13 +223,6 @@ export default function AdminPanel() {
                         {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Department</Label>
-                      <Input
-                        value={editState.department}
-                        onChange={e => setEditState(s => s ? { ...s, department: e.target.value } : s)}
-                      />
-                    </div>
                     <div className="flex items-center gap-2 pt-5">
                       <input
                         type="checkbox"
@@ -274,7 +265,7 @@ export default function AdminPanel() {
                     <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                     <p className="text-[10px] text-muted-foreground/70 mt-0.5">
                       Joined {fmtDate(u.created_at)}
-                      {u.department ? ` · ${u.department}` : ''}
+                      
                     </p>
                   </div>
 
