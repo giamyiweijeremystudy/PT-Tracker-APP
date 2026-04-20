@@ -101,8 +101,12 @@ function NumInput({
   min: number; max: number; step?: number; className?: string;
 }) {
   const [raw, setRaw] = useState(String(value));
-  // Keep raw in sync when slider drives the value
-  useEffect(() => { setRaw(String(value)); }, [value]);
+  const [focused, setFocused] = useState(false);
+
+  // Keep raw in sync when slider drives the value (but not while user is typing)
+  useEffect(() => {
+    if (!focused) setRaw(String(value));
+  }, [value, focused]);
 
   return (
     <input
@@ -112,14 +116,19 @@ function NumInput({
       value={raw}
       onChange={e => {
         setRaw(e.target.value);
-        // Update live only if it's a valid in-range number
         const n = step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value);
         if (!isNaN(n) && n >= min && n <= max) onChange(n);
       }}
+      onFocus={e => {
+        setFocused(true);
+        // Select all text so typing immediately replaces it
+        e.target.select();
+      }}
       onBlur={() => {
-        // Clamp on blur so display always shows a valid value
+        setFocused(false);
+        // Clamp on blur — reverts to valid value if nothing useful was typed
         const n = step < 1 ? parseFloat(raw) : parseInt(raw);
-        const clamped = isNaN(n) ? min : Math.min(max, Math.max(min, n));
+        const clamped = isNaN(n) ? value : Math.min(max, Math.max(min, n));
         onChange(clamped);
         setRaw(String(clamped));
       }}
