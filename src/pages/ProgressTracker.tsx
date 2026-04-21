@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,9 +69,13 @@ function todayStr() {
 function AddExerciseModal({
   onClose,
   onCreate,
+  existingKeys,
+  existingLabels,
 }: {
   onClose: () => void;
   onCreate: (mod: Omit<TrackerModule, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
+  existingKeys: string[];
+  existingLabels: string[];
 }) {
   const [selected, setSelected] = useState<string>('');
   const [customLabel, setCustomLabel] = useState('');
@@ -113,9 +118,9 @@ function AddExerciseModal({
   const removeMetric = (i: number) => setMetricInputs((p) => p.filter((_, j) => j !== i));
   const updateMetric = (i: number, v: string) => setMetricInputs((p) => p.map((m, j) => j === i ? v : m));
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
       onClick={onClose}
     >
       {/* Modal panel */}
@@ -142,11 +147,15 @@ function AddExerciseModal({
                 <button
                   key={p.value}
                   onClick={() => handleSelectPreset(p.value)}
+                  disabled={existingKeys.includes(p.value)}
+                  title={existingKeys.includes(p.value) ? 'Already in your tracker' : undefined}
                   className={
                     'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors text-left ' +
-                    (selected === p.value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-background hover:bg-muted')
+                    (existingKeys.includes(p.value)
+                      ? 'border-border bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
+                      : selected === p.value
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-background hover:bg-muted')
                   }
                 >
                   <span>{p.emoji}</span>
@@ -221,7 +230,8 @@ function AddExerciseModal({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -585,6 +595,15 @@ export default function ProgressTracker() {
 
   const handleCreate = async (mod: Omit<TrackerModule, 'id' | 'user_id' | 'created_at'>) => {
     if (!user) return;
+    // Duplicate check — same key or same label (case-insensitive)
+    const labelLower = mod.exercise_label.toLowerCase().trim();
+    const duplicate = modules.some(
+      m => m.exercise_key === mod.exercise_key || m.exercise_label.toLowerCase().trim() === labelLower
+    );
+    if (duplicate) {
+      toast({ title: 'Exercise already exists', description: `"${mod.exercise_label}" is already in your tracker.`, variant: 'destructive' });
+      return;
+    }
     const { error } = await supabase.from('tracker_modules').insert({ ...mod, user_id: user.id });
     if (error) {
       toast({ title: 'Error creating', description: error.message, variant: 'destructive' });
@@ -675,6 +694,8 @@ export default function ProgressTracker() {
         <AddExerciseModal
           onClose={() => setShowModal(false)}
           onCreate={handleCreate}
+          existingKeys={modules.map(m => m.exercise_key)}
+          existingLabels={modules.map(m => m.exercise_label.toLowerCase().trim())}
         />
       )}
     </div>
