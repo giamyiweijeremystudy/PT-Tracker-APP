@@ -127,7 +127,12 @@ function typeEmoji(a: SavedActivity, extraTypes: { value: string; label: string;
 }
 function activityStats(a: SavedActivity): { label: string; value: string }[] {
   const stats: { label: string; value: string }[] = [];
-  if (a.duration_minutes) stats.push({ label: 'Duration', value: `${a.duration_minutes} min` });
+  if (a.duration_minutes) {
+    const h = Math.floor(a.duration_minutes / 60);
+    const m = a.duration_minutes % 60;
+    const val = h > 0 ? `${h}h ${m > 0 ? m + 'min' : ''}`.trim() : `${m} min`;
+    stats.push({ label: 'Duration', value: val });
+  }
   if (a.distance_km)      stats.push({ label: 'Distance', value: `${a.distance_km} km` });
   if (a.pace_per_km)      stats.push({ label: 'Pace',     value: `${fmtTime(a.pace_per_km)}/km` });
   if (a.laps)             stats.push({ label: 'Laps',     value: `${a.laps}` });
@@ -146,7 +151,8 @@ const defaultForm = () => ({
   type: 'running' as ActivityType,
   title: '',
   custom_type: '',
-  duration_minutes: '',
+  dur_h: '',
+  dur_m: '',
   distance_km: '',
   laps: '',
   pool_length_m: '',
@@ -237,8 +243,17 @@ function ActivityForm({
 
       {/* Duration */}
       <div className="space-y-2">
-        <Label>Duration (minutes)</Label>
-        <Input type="number" placeholder="e.g. 45" value={formData.duration_minutes} onChange={e => setField('duration_minutes', e.target.value)} className="max-w-[160px]" />
+        <Label>Duration</Label>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Input type="number" min="0" placeholder="0" value={formData.dur_h} onChange={e => setField('dur_h', e.target.value)} className="w-16 text-center" />
+            <span className="text-xs text-muted-foreground">hr</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Input type="number" min="0" max="59" placeholder="0" value={formData.dur_m} onChange={e => setField('dur_m', e.target.value)} className="w-16 text-center" />
+            <span className="text-xs text-muted-foreground">min</span>
+          </div>
+        </div>
       </div>
 
       {/* Distance */}
@@ -246,9 +261,9 @@ function ActivityForm({
         <div className="space-y-2">
           <Label>Distance (km)</Label>
           <Input type="number" step="0.1" placeholder="e.g. 5.0" value={formData.distance_km} onChange={e => setField('distance_km', e.target.value)} className="max-w-[160px]" />
-          {formData.distance_km && formData.duration_minutes && (
+          {formData.distance_km && (formData.dur_h || formData.dur_m) && (
             <p className="text-xs text-muted-foreground">
-              Pace: {fmtTime(Math.round((parseInt(formData.duration_minutes) * 60) / parseFloat(formData.distance_km)))}/km
+              Pace: {fmtTime(Math.round(((parseInt(formData.dur_h||'0')*60 + parseInt(formData.dur_m||'0')) * 60) / parseFloat(formData.distance_km)))}/km
             </p>
           )}
         </div>
@@ -490,7 +505,8 @@ export default function Activities() {
     const run_seconds = (formData.run_min || formData.run_sec)
       ? parseInt(formData.run_min || '0') * 60 + parseInt(formData.run_sec || '0') : null;
     const distance_km = formData.distance_km ? parseFloat(formData.distance_km) : null;
-    const duration_minutes = formData.duration_minutes ? parseInt(formData.duration_minutes) : null;
+    const duration_minutes = (formData.dur_h || formData.dur_m)
+      ? parseInt(formData.dur_h || '0') * 60 + parseInt(formData.dur_m || '0') : null;
     const pace_per_km = distance_km && duration_minutes &&
       DISTANCE_TYPES.includes(formData.type) && formData.type !== 'cycling' && formData.type !== 'swimming'
       ? Math.round((duration_minutes * 60) / distance_km) : null;
@@ -652,7 +668,9 @@ export default function Activities() {
     setEditForm({
       date: a.date, type: (a.type as ActivityType) || 'running',
       title: a.title || '', custom_type: a.custom_type || '',
-      duration_minutes: a.duration_minutes ? String(a.duration_minutes) : '',
+      duration_minutes: a.duration_minutes ? String(a.duration_minutes) : '',  // kept for type compat
+      dur_h: a.duration_minutes ? String(Math.floor(a.duration_minutes / 60)) : '',
+      dur_m: a.duration_minutes ? String(a.duration_minutes % 60) : '',
       distance_km: a.distance_km ? String(a.distance_km) : '',
       laps: a.laps ? String(a.laps) : '',
       pool_length_m: a.pool_length_m ? String(a.pool_length_m) : '',
