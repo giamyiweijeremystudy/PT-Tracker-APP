@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Activity, Plus, Trash2, Pencil, MapPin, Image, X, Check, Loader2 } from 'lucide-react';
+import { Activity, Plus, Trash2, Pencil, MapPin, Image, X, Check, Loader2, RefreshCw } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 
@@ -24,7 +24,7 @@ type ActivityType =
   | 'ippt_training' | 'gym' | 'strength_training' | 'calisthenics'
   | 'others';
 
-const ACTIVITY_TYPES: { value: ActivityType; label: string; emoji: string }[] = [
+const BUILTIN_ACTIVITY_TYPES: { value: ActivityType; label: string; emoji: string }[] = [
   { value: 'running',           label: 'Running',           emoji: '🏃' },
   { value: 'swimming',          label: 'Swimming',          emoji: '🏊' },
   { value: 'ippt_training',     label: 'IPPT Training',     emoji: '🪖' },
@@ -36,6 +36,19 @@ const ACTIVITY_TYPES: { value: ActivityType; label: string; emoji: string }[] = 
   { value: 'jogging',           label: 'Jogging',           emoji: '👟' },
   { value: 'others',            label: 'Others',            emoji: '➕' },
 ];
+
+// Tracker module presets — mirrors ProgressTracker.tsx PRESETS
+const TRACKER_PRESETS: Record<string, { defaultMetrics: string[]; emoji: string; label: string }> = {
+  running:           { label: 'Running',           emoji: '🏃', defaultMetrics: ['Distance (km)', 'Time (min)', 'Pace (min/km)'] },
+  swimming:          { label: 'Swimming',          emoji: '🏊', defaultMetrics: ['Laps', 'Distance (m)', 'Time (min)'] },
+  ippt_training:     { label: 'IPPT Training',     emoji: '🪖', defaultMetrics: ['Push-ups', 'Sit-ups', 'Run Time (sec)'] },
+  gym:               { label: 'Gym',               emoji: '🏋️', defaultMetrics: ['Sets', 'Reps', 'Weight (kg)'] },
+  cycling:           { label: 'Cycling',           emoji: '🚴', defaultMetrics: ['Distance (km)', 'Time (min)'] },
+  strength_training: { label: 'Strength Training', emoji: '💪', defaultMetrics: ['Sets', 'Reps', 'Weight (kg)'] },
+  calisthenics:      { label: 'Calisthenics',      emoji: '🤸', defaultMetrics: ['Reps', 'Sets', 'Duration (min)'] },
+  walking:           { label: 'Walking',           emoji: '🚶', defaultMetrics: ['Distance (km)', 'Duration (min)'] },
+  jogging:           { label: 'Jogging',           emoji: '👟', defaultMetrics: ['Distance (km)', 'Time (min)'] },
+};
 
 const DISTANCE_TYPES: ActivityType[] = ['running', 'jogging', 'walking', 'swimming', 'cycling'];
 const IPPT_TYPES:     ActivityType[] = ['ippt_training'];
@@ -68,18 +81,49 @@ type SavedActivity = {
   created_at: string;
 };
 
+type TrackerModule = {
+  id: string;
+  user_id: string;
+  exercise_key: string;
+  exercise_label: string;
+  emoji: string;
+  metric_labels: string[];
+  created_at: string;
+};
+
+// ─── Build metric values for a tracker module from an activity ────────────────
+
+function buildMetricValues(activity: SavedActivity, module: TrackerModule): (number | null)[] {
+  return module.metric_labels.map(label => {
+    const l = label.toLowerCase();
+    if (l.includes('distance')) return activity.distance_km ?? null;
+    if (l.includes('time') || l.includes('duration')) return activity.duration_minutes ?? null;
+    if (l.includes('pace')) return activity.pace_per_km ? activity.pace_per_km / 60 : null; // convert sec/km → min/km
+    if (l.includes('lap')) return activity.laps ?? null;
+    if (l.includes('push')) return activity.pushups ?? null;
+    if (l.includes('sit')) return activity.situps ?? null;
+    if (l.includes('run time') || l.includes('run (sec)')) return activity.run_seconds ?? null;
+    if (l.includes('set')) return activity.sets ?? null;
+    if (l.includes('rep')) return activity.reps ?? null;
+    if (l.includes('weight')) return activity.weight_kg ?? null;
+    return null;
+  });
+}
+
 const fmtTime = (sec: number | null) => {
   if (!sec) return '—';
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 };
 
-function typeLabel(a: SavedActivity) {
+function typeLabel(a: SavedActivity, extraTypes: { value: string; label: string; emoji: string }[]) {
   if (a.type === 'others' && a.custom_type) return a.custom_type;
-  return ACTIVITY_TYPES.find(t => t.value === a.type)?.label ?? a.type;
+  const all = [...BUILTIN_ACTIVITY_TYPES, ...extraTypes];
+  return all.find(t => t.value === a.type)?.label ?? a.type;
 }
-function typeEmoji(a: SavedActivity) {
+function typeEmoji(a: SavedActivity, extraTypes: { value: string; label: string; emoji: string }[]) {
   if (a.type === 'others') return '➕';
-  return ACTIVITY_TYPES.find(t => t.value === a.type)?.emoji ?? '🏃';
+  const all = [...BUILTIN_ACTIVITY_TYPES, ...extraTypes];
+  return all.find(t => t.value === a.type)?.emoji ?? '🏃';
 }
 function activityStats(a: SavedActivity): { label: string; value: string }[] {
   const stats: { label: string; value: string }[] = [];
@@ -146,14 +190,16 @@ type ActivityFormProps = {
   savingState: boolean;
   isEdit?: boolean;
   onPhotoClick: () => void;
+  extraActivityTypes: { value: string; label: string; emoji: string }[];
 };
 
 function ActivityForm({
   formData, setField, imgPreview, setImgPreview,
   locatingState, onGetLocation, onSave, onCancel,
-  savingState, isEdit, onPhotoClick,
+  savingState, isEdit, onPhotoClick, extraActivityTypes,
 }: ActivityFormProps) {
   const t = formData.type;
+  const allTypes = [...BUILTIN_ACTIVITY_TYPES, ...extraActivityTypes];
   return (
     <div className="space-y-4">
 
@@ -167,7 +213,7 @@ function ActivityForm({
       <div className="space-y-2">
         <Label>Activity Type</Label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {ACTIVITY_TYPES.map(at => (
+          {allTypes.map(at => (
             <button key={at.value} type="button" onClick={() => setField('type', at.value)}
               className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${formData.type === at.value ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}>
               <span>{at.emoji}</span><span>{at.label}</span>
@@ -360,17 +406,37 @@ export default function Activities() {
   const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
   const [editLocating, setEditLocating]   = useState(false);
   const [editSaving, setEditSaving]       = useState(false);
+  const [syncing, setSyncing]             = useState<string | null>(null);
+
+  // Extra activity types pulled from tracker_modules that aren't built-in
+  const [extraActivityTypes, setExtraActivityTypes] = useState<{ value: string; label: string; emoji: string }[]>([]);
 
   const fileRef     = useRef<HTMLInputElement>(null);
   const editFileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { if (user) fetchActivities(); }, [user]);
+  useEffect(() => { if (user) { fetchActivities(); fetchExtraActivityTypes(); } }, [user]);
 
   const fetchActivities = async () => {
     const { data } = await supabase
       .from('activities').select('*').eq('user_id', user!.id)
       .order('date', { ascending: false }).order('created_at', { ascending: false });
     if (data) setActivities(data as SavedActivity[]);
+  };
+
+  // Fetch tracker modules and derive any exercise types not already in BUILTIN_ACTIVITY_TYPES
+  const fetchExtraActivityTypes = async () => {
+    const { data } = await supabase
+      .from('tracker_modules')
+      .select('exercise_key, exercise_label, emoji')
+      .eq('user_id', user!.id);
+    if (!data) return;
+    const builtinKeys = new Set(BUILTIN_ACTIVITY_TYPES.map(t => t.value));
+    const extras = data
+      .filter(m => !builtinKeys.has(m.exercise_key))
+      .map(m => ({ value: m.exercise_key, label: m.exercise_label, emoji: m.emoji }));
+    // Deduplicate by value
+    const seen = new Set<string>();
+    setExtraActivityTypes(extras.filter(e => { if (seen.has(e.value)) return false; seen.add(e.value); return true; }));
   };
 
   const f  = useCallback((key: keyof FormState, value: string) => setForm(p => ({ ...p, [key]: value })), []);
@@ -447,6 +513,83 @@ export default function Activities() {
       latitude: formData.latitude ? parseFloat(formData.latitude) : null,
       longitude: formData.longitude ? parseFloat(formData.longitude) : null,
     };
+  };
+
+  // ─── Sync activity → Progress Tracker ──────────────────────────────────────
+  const syncToProgressTracker = async (activity: SavedActivity) => {
+    if (!user) return;
+    setSyncing(activity.id);
+    try {
+      // Determine the exercise key — for 'others', use custom_type as key
+      const exerciseKey = activity.type === 'others'
+        ? (activity.custom_type ? 'custom_' + activity.custom_type.toLowerCase().replace(/\s+/g, '_') : null)
+        : activity.type;
+
+      if (!exerciseKey) {
+        toast({ title: 'Set a custom activity name before syncing', variant: 'destructive' });
+        return;
+      }
+
+      // Look up existing tracker module
+      let { data: existingModules } = await supabase
+        .from('tracker_modules')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('exercise_key', exerciseKey)
+        .limit(1);
+
+      let module: TrackerModule | null = existingModules?.[0] ?? null;
+
+      // No module yet — create one automatically
+      if (!module) {
+        const preset = TRACKER_PRESETS[activity.type];
+        const newModule = {
+          user_id: user.id,
+          exercise_key: exerciseKey,
+          exercise_label: preset?.label ?? (activity.custom_type || activity.type),
+          emoji: preset?.emoji ?? '🏅',
+          metric_labels: preset?.defaultMetrics ?? ['Duration (min)'],
+        };
+        const { data: created, error: createErr } = await supabase
+          .from('tracker_modules')
+          .insert(newModule)
+          .select('*')
+          .single();
+        if (createErr || !created) {
+          toast({ title: 'Could not create tracker module', description: createErr?.message, variant: 'destructive' });
+          return;
+        }
+        module = created as TrackerModule;
+        toast({ title: `"${module.exercise_label}" added to Progress Tracker` });
+        // Refresh extra types so it appears in dropdown
+        fetchExtraActivityTypes();
+      }
+
+      // Build metric values from activity data
+      const metricValues = buildMetricValues(activity, module);
+      const hasAnyValue = metricValues.some(v => v !== null);
+      if (!hasAnyValue) {
+        toast({ title: 'No matching metrics to sync for this activity', variant: 'destructive' });
+        return;
+      }
+
+      // Insert progress entry
+      const { error: entryErr } = await supabase.from('progress_entries').insert({
+        module_id: module.id,
+        user_id: user.id,
+        logged_at: activity.date,
+        metric_values: metricValues,
+        notes: activity.title || activity.description || '',
+      });
+
+      if (entryErr) {
+        toast({ title: 'Sync failed', description: entryErr.message, variant: 'destructive' });
+      } else {
+        toast({ title: '✅ Synced to Progress Tracker!', description: `Logged under ${module.exercise_label}` });
+      }
+    } finally {
+      setSyncing(null);
+    }
   };
 
   const save = async () => {
@@ -607,6 +750,7 @@ export default function Activities() {
             onCancel={() => { setShowForm(false); setForm(defaultForm()); setImagePreview(null); setImageFile(null); }}
             savingState={saving}
             onPhotoClick={() => fileRef.current?.click()}
+            extraActivityTypes={extraActivityTypes}
           />
         </div>
       )}
@@ -642,6 +786,7 @@ export default function Activities() {
                   savingState={editSaving}
                   isEdit
                   onPhotoClick={() => editFileRef.current?.click()}
+                  extraActivityTypes={extraActivityTypes}
                 />
               </div>
             ) : (
@@ -653,8 +798,8 @@ export default function Activities() {
                     <div>
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-semibold text-foreground">{profile?.full_name || 'You'}</p>
-                        <span className="text-base">{typeEmoji(a)}</span>
-                        <span className="text-xs font-medium text-primary">{typeLabel(a)}</span>
+                        <span className="text-base">{typeEmoji(a, extraActivityTypes)}</span>
+                        <span className="text-xs font-medium text-primary">{typeLabel(a, extraActivityTypes)}</span>
                       </div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <span>{fmtDate(a.date, { year: true })}</span>
@@ -662,7 +807,19 @@ export default function Activities() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-1">
+                  {/* Action buttons — sync is leftmost so it's easy to find */}
+                  <div className="flex gap-1 items-center">
+                    {/* Sync to Progress Tracker button */}
+                    <button
+                      title="Sync to Progress Tracker"
+                      disabled={syncing === a.id}
+                      onClick={() => syncToProgressTracker(a)}
+                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                    >
+                      {syncing === a.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <RefreshCw className="h-3.5 w-3.5" />}
+                    </button>
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => startEdit(a)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
