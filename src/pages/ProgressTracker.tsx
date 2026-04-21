@@ -114,23 +114,15 @@ function AddExerciseModal({
   const updateMetric = (i: number, v: string) => setMetricInputs((p) => p.map((m, j) => j === i ? v : m));
 
   return (
-    <div className="fixed inset-0 z-[70]" style={{ pointerEvents: 'none' }}>
-      {/* Backdrop */}
+    <div
+      className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      {/* Modal panel */}
       <div
-        className="absolute inset-0 bg-black/60"
-        style={{ pointerEvents: 'auto' }}
-        onClick={onClose}
-      />
-      {/* Floating sheet — inset on all sides so it never overflows */}
-      <div
-        className="absolute mx-auto bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{
-          pointerEvents: 'auto',
-          top: 'calc(env(safe-area-inset-top, 0px) + 24px)',
-          bottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 16px)',
-          left: '16px',
-          right: '16px',
-        }}
+        className="relative bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden w-full max-w-md"
+        style={{ maxHeight: 'min(90dvh, 680px)' }}
+        onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b shrink-0">
           <h2 className="text-base font-bold">Add Exercise</h2>
