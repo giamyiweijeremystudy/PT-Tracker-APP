@@ -247,10 +247,17 @@ function ExerciseDetail({
   const { user } = useAuth();
   const { toast } = useToast();
 
+  // Detect which metric indices are time-based (stored as total minutes)
+  const isTimeMetric = (label: string) =>
+    /time|duration/i.test(label);
+
   const [entries, setEntries] = useState<ProgressEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // For time metrics we store [hours, minutes] separately; other metrics store a plain string
   const [formValues, setFormValues] = useState<string[]>(mod.metric_labels.map(() => ''));
+  const [formTimeH, setFormTimeH]   = useState<string[]>(mod.metric_labels.map(() => ''));
+  const [formTimeM, setFormTimeM]   = useState<string[]>(mod.metric_labels.map(() => ''));
   const [formDate, setFormDate] = useState(todayStr);
   const [formNotes, setFormNotes] = useState('');
 
@@ -271,7 +278,14 @@ function ExerciseDetail({
 
   const handleSubmit = async () => {
     if (!user) return;
-    const vals = formValues.map((v) => parseFloat(v));
+    const vals = mod.metric_labels.map((label, i) => {
+      if (isTimeMetric(label)) {
+        const h = parseInt(formTimeH[i] || '0');
+        const m = parseInt(formTimeM[i] || '0');
+        return (isNaN(h) && isNaN(m)) ? NaN : (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+      }
+      return parseFloat(formValues[i]);
+    });
     if (vals.every(isNaN)) {
       toast({ title: 'Enter at least one value', variant: 'destructive' }); return;
     }
@@ -289,6 +303,8 @@ function ExerciseDetail({
     } else {
       toast({ title: 'Progress logged!' });
       setFormValues(mod.metric_labels.map(() => ''));
+      setFormTimeH(mod.metric_labels.map(() => ''));
+      setFormTimeM(mod.metric_labels.map(() => ''));
       setFormNotes('');
       fetchEntries();
     }
@@ -374,17 +390,36 @@ function ExerciseDetail({
             {mod.metric_labels.map((label, i) => (
               <div key={i} className="space-y-1.5">
                 <Label>{label}</Label>
-                <Input
-                  type="number"
-                  step="any"
-                  placeholder="0"
-                  value={formValues[i]}
-                  onChange={(e) => {
-                    const next = [...formValues];
-                    next[i] = e.target.value;
-                    setFormValues(next);
-                  }}
-                />
+                {isTimeMetric(label) ? (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number" min="0" placeholder="0"
+                      value={formTimeH[i]}
+                      onChange={(e) => { const next = [...formTimeH]; next[i] = e.target.value; setFormTimeH(next); }}
+                      className="w-14 text-center"
+                    />
+                    <span className="text-xs text-muted-foreground">hr</span>
+                    <Input
+                      type="number" min="0" max="59" placeholder="0"
+                      value={formTimeM[i]}
+                      onChange={(e) => { const next = [...formTimeM]; next[i] = e.target.value; setFormTimeM(next); }}
+                      className="w-14 text-center"
+                    />
+                    <span className="text-xs text-muted-foreground">min</span>
+                  </div>
+                ) : (
+                  <Input
+                    type="number"
+                    step="any"
+                    placeholder="0"
+                    value={formValues[i]}
+                    onChange={(e) => {
+                      const next = [...formValues];
+                      next[i] = e.target.value;
+                      setFormValues(next);
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -430,7 +465,9 @@ function ExerciseDetail({
                       {mod.metric_labels.map((_, i) => (
                         <td key={i} className="py-2 pr-4 tabular-nums">
                           {e.metric_values[i] !== null && e.metric_values[i] !== undefined
-                            ? e.metric_values[i]
+                            ? isTimeMetric(mod.metric_labels[i])
+                              ? (() => { const h = Math.floor(e.metric_values[i] / 60); const m = e.metric_values[i] % 60; return h > 0 ? `${h}h ${m > 0 ? m + 'min' : ''}`.trim() : `${m}min`; })()
+                              : e.metric_values[i]
                             : '-'}
                         </td>
                       ))}
