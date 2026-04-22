@@ -143,13 +143,16 @@ export default function Chat() {
       const systemPrompt = buildSystemPrompt(appContextRef.current, userName);
       console.log('[Chat] Calling Gemini, key present:', !!geminiKey, 'online:', isOnline);
       const geminiReply = await callGemini(text, history, systemPrompt, geminiKey);
-      console.log('[Chat] Gemini reply received:', !!geminiReply);
 
-      if (geminiReply) {
+      if (geminiReply && geminiReply.startsWith('__error:')) {
+        // Show the error visibly so we can debug without DevTools
+        responseText = '⚠️ Gemini error: ' + geminiReply.replace('__error:', '');
+        source = 'gemini';
+      } else if (geminiReply) {
         responseText = geminiReply;
         source = 'gemini';
       } else {
-        // Gemini failed — fall back to local engine
+        // null = offline or no key, fall back silently
         responseText = await dynamicSearch(text, userId);
       }
     } else {
