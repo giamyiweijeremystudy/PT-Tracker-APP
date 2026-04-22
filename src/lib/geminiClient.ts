@@ -47,7 +47,7 @@ export async function callGemini(
   if (!apiKey) return '__error:No API key';
   if (!navigator.onLine) return null;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`;
 
   // Prepend system prompt as first user turn (v1 API doesn't support system_instruction)
   const history = toGeminiHistory(conversationHistory);
