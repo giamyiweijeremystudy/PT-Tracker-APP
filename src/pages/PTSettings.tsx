@@ -89,9 +89,9 @@ export default function PTSettings() {
   const handleSaveGeminiKey = async () => {
     if (!user) return;
     const trimmed = geminiKey.trim();
-    const { error } = await supabase.from('user_settings').upsert(
-      { user_id: user.id, gemini_api_key: trimmed || null },
-      { onConflict: 'user_id' }
+    const { error } = await supabase.from('app_config').upsert(
+      { key: 'gemini_api_key', value: trimmed || null },
+      { onConflict: 'key' }
     );
     if (error) {
       toast({ title: 'Error saving key', description: error.message, variant: 'destructive' });
@@ -99,9 +99,9 @@ export default function PTSettings() {
     }
     setGeminiKeySaved(!!trimmed);
     if (trimmed) {
-      toast({ title: 'Gemini API key saved ✓', description: 'PT Assistant will now use Gemini AI on all devices.' });
+      toast({ title: 'Gemini API key saved ✓', description: 'All users will now have AI mode enabled.' });
     } else {
-      toast({ title: 'Gemini API key removed' });
+      toast({ title: 'Gemini API key removed — all users reverted to local mode.' });
     }
   };
 
@@ -124,8 +124,7 @@ export default function PTSettings() {
       };
       setSettings(s);
       setNotifEmail(data.notification_email ?? '');
-      setGeminiKeyInput(data.gemini_api_key ?? '');
-      setGeminiKeySaved(!!data.gemini_api_key);
+      // gemini key loaded separately below
       applyDarkMode(s.dark_mode);
     } else {
       const savedDark = localStorage.getItem('pt-dark-mode') === '1';
@@ -135,6 +134,17 @@ export default function PTSettings() {
   }, [user]);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  useEffect(() => {
+    supabase
+      .from('app_config')
+      .select('value')
+      .eq('key', 'gemini_api_key')
+      .single()
+      .then(({ data }) => {
+        if (data?.value) { setGeminiKeyInput(data.value); setGeminiKeySaved(true); }
+      });
+  }, []);
 
   useEffect(() => {
     const supported = 'serviceWorker' in navigator && 'PushManager' in window && !!VAPID_PUBLIC_KEY;
@@ -461,13 +471,13 @@ export default function PTSettings() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Enter your Google AI Studio API key to enable AI-powered responses in the PT Assistant. Get a free key at{' '}
+            Set a shared Gemini API key for all users of this app. Get a free key at{' '}
             <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">aistudio.google.com</a>.
           </p>
           {geminiKeySaved && (
             <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-xs font-medium">
               <CheckCircle className="h-4 w-4" />
-              Gemini AI is active — PT Assistant is using AI mode
+              Gemini AI is active — all users have AI mode enabled
             </div>
           )}
           <div className="flex gap-2">
