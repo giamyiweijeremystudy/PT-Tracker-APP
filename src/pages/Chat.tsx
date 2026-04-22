@@ -14,6 +14,9 @@ interface UserMessage  { role: 'user';  text: string; timestamp: number }
 interface BotMessage   { role: 'bot';   text: string; timestamp: number; loading?: boolean; navRoute?: string; navLabel?: string; source?: 'gemini' | 'local' }
 type ChatMessage = UserMessage | BotMessage;
 
+// Read at module level — Vite replaces this at build time, always accurate
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+
 const WELCOME: BotMessage = {
   role: 'bot',
   text: "Hi! I'm your PT Assistant. Ask me anything about your training — scores, activities, team, schedule, progress and more.",
@@ -53,7 +56,6 @@ export default function Chat() {
   const [input, setInput]       = useState('');
   const [thinking, setThinking] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [hasGeminiKey, setHasGeminiKey] = useState(false);
 
   // Cached app context — refreshed once per session
   const appContextRef = useRef<string>('');
@@ -61,12 +63,6 @@ export default function Chat() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
-
-  // Detect API key presence
-  useEffect(() => {
-    const key = import.meta.env.VITE_GEMINI_API_KEY;
-    setHasGeminiKey(!!key);
-  }, []);
 
   // Online/offline listener
   useEffect(() => {
@@ -115,13 +111,13 @@ export default function Chat() {
     let source: 'gemini' | 'local' = 'local';
 
     // ── Try Gemini first (if online and key present) ──────────────────────────
-    if (isOnline && hasGeminiKey) {
+    if (isOnline && !!GEMINI_API_KEY) {
       // Refresh context if stale (empty)
       if (!appContextRef.current) {
         appContextRef.current = await fetchFullAppContext(userId);
       }
       const systemPrompt = buildSystemPrompt(appContextRef.current, userName);
-      const geminiReply = await callGemini(text, history, systemPrompt);
+      const geminiReply = await callGemini(text, history, systemPrompt, GEMINI_API_KEY ?? '');
 
       if (geminiReply) {
         responseText = geminiReply;
@@ -147,7 +143,7 @@ export default function Chat() {
       source,
     };
     addMessage(botMsg);
-  }, [input, thinking, messages, isOnline, hasGeminiKey, userId, userName]);
+  }, [input, thinking, messages, isOnline, !!GEMINI_API_KEY, userId, userName]);
 
   const handleClear = () => {
     clearHistory(userId);
@@ -161,7 +157,7 @@ export default function Chat() {
     });
   };
 
-  const aiMode = isOnline && hasGeminiKey;
+  const aiMode = isOnline && !!GEMINI_API_KEY;
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col h-[calc(100vh-8rem)]">
@@ -296,7 +292,7 @@ export default function Chat() {
         <p className="text-xs text-muted-foreground text-center mt-2">
           {aiMode
             ? 'AI reads your live app data · conversation saved locally'
-            : !hasGeminiKey
+            : !!!GEMINI_API_KEY
               ? 'Add VITE_GEMINI_API_KEY to enable AI mode'
               : 'Offline — using local search engine'
           }
