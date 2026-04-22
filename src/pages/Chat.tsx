@@ -64,16 +64,16 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
-  // Load Gemini key from Supabase user_settings
+  // Load shared Gemini key from app_config (set once by admin, used by all users)
   useEffect(() => {
     if (!userId) return;
     supabase
-      .from('user_settings')
-      .select('gemini_api_key')
-      .eq('user_id', userId)
+      .from('app_config')
+      .select('value')
+      .eq('key', 'gemini_api_key')
       .single()
       .then(({ data }) => {
-        if (data?.gemini_api_key) setGeminiKey(data.gemini_api_key);
+        if (data?.value) setGeminiKey(data.value);
       });
   }, [userId]);
 
