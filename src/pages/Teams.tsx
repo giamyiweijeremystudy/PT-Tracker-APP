@@ -111,6 +111,92 @@ const SG_HOLIDAYS: Record<string, string> = {
 };
 
 const SFT_TYPES = ['Running','Gym','Swimming','Basketball','Badminton','Frisbee','Squash','Strength Training','Others'] as const;
+
+// ─── Shared parade state formatter ───────────────────────────────────────────
+function formatParadeState(
+  submissions: any[],
+  notSubmitted: any[],
+  date: string,
+  teamName: string,
+  sessionType: 'SFT' | 'PT' | 'mixed' = 'mixed'
+): string {
+  const getName = (s: any) =>
+    s.profile
+      ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank + ' ' : ''}${s.profile.full_name}`
+      : 'Member';
+  const getMemberName = (m: any) =>
+    `${m.profile?.rank && m.profile?.rank !== 'Other' ? m.profile.rank + ' ' : ''}${m.profile?.full_name ?? 'Member'}`;
+
+  // Format date as "22 Apr 2026"
+  const [y, mo, d] = date.slice(0, 10).split('-').map(Number);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtD = `${d} ${months[mo - 1]} ${y}`;
+
+  // Determine session label for header
+  const isSFT = submissions.length > 0
+    ? submissions.every(s => s.session_type === 'SFT')
+    : sessionType === 'SFT';
+  const sessionLabel = isSFT ? 'SFT Attendance' : 'PT Attendance';
+
+  const lines: string[] = [
+    `${sessionLabel} | ${teamName}`,
+    `Date: ${fmtD}`,
+  ];
+
+  // Split into attending vs not attending
+  const attending    = submissions.filter(s => s.attendance_status === 'Participating');
+  const notAttending = submissions.filter(s => s.attendance_status !== 'Participating');
+
+  // Status abbreviation map
+  const statusAbbr: Record<string, string> = {
+    'Light Duty': 'LD',
+    'MC': 'MC',
+    'On Leave': 'OL',
+    'RSO': 'RSO',
+  };
+
+  // ATTENDING section — grouped by SFT type if SFT, flat if PT
+  lines.push(`
+ATTENDING (${attending.length})`);
+
+  if (isSFT) {
+    // Group by sft_type
+    const groups: Record<string, any[]> = {};
+    attending.forEach(s => {
+      const key = s.sft_type === 'Others' && s.sft_custom ? s.sft_custom : (s.sft_type ?? 'Other');
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    });
+    Object.entries(groups).forEach(([groupName, members]) => {
+      lines.push(`${groupName} (${members.length})`);
+      members.forEach((s, i) => {
+        const temp = s.temperature != null ? ` — ${s.temperature}°C` : '';
+        lines.push(`${i + 1}. ${getName(s)}${temp}`);
+      });
+    });
+  } else {
+    // PT — flat numbered list
+    attending.forEach((s, i) => {
+      const temp = s.temperature != null ? ` — ${s.temperature}°C` : '';
+      lines.push(`${i + 1}. ${getName(s)}${temp}`);
+    });
+  }
+
+  // NOT ATTENDING section
+  const totalNotAttending = notAttending.length + notSubmitted.length;
+  lines.push(`
+NOT ATTENDING (${totalNotAttending})`);
+  let idx = 1;
+  notAttending.forEach(s => {
+    const reason = statusAbbr[s.attendance_status] ?? s.attendance_status;
+    lines.push(`${idx++}. ${getName(s)} — ${reason}`);
+  });
+  notSubmitted.forEach(m => {
+    lines.push(`${idx++}. ${getMemberName(m)} — No submission`);
+  });
+
+  return lines.join('\n');
+}
 const ATTENDANCE_STATUSES = ['Participating','Light Duty','MC','On Leave'] as const;
 
 type TeamEvent = {
@@ -653,18 +739,9 @@ export default function Teams() {
     });
 
     if (fmt === 'txt') {
-      const lines = [`Parade State — ${filterDate ? fmtDate(filterDate) : fmtDate(localDateStr())}`, ''];
-      lines.push(`SUBMITTED (${sorted.length})`);
-      sorted.forEach(s => {
-        const temp = s.temperature ? ` | ${s.temperature}C` : '';
-        const fever = s.temperature && s.temperature >= 37.5 ? ' (fever)' : '';
-        lines.push(`  ${getName(s)} - ${s.session_type} | ${s.attendance_status}${temp}${fever}${s.notes ? ` | ${s.notes}` : ''}`);
-      });
-      if (notSubmitted.length > 0) {
-        lines.push('', `NOT SUBMITTED (${notSubmitted.length})`);
-        notSubmitted.forEach(m => lines.push(`  ${getMemberName(m)}`));
-      }
-      downloadTxt(`parade_state_${filterDate ?? localDateStr()}.txt`, lines);
+      const date = filterDate ?? localDateStr();
+      const txt = formatParadeState(sorted, notSubmitted, date, team?.name ?? 'Team');
+      downloadTxt(`parade_state_${date}.txt`, txt.split('\n'));
     } else {
       const rows: string[][] = [['Date','Name','Rank','Session','Attendance','SFT Type','Temperature','Notes']];
       sorted.forEach(s => {
@@ -1445,29 +1522,7 @@ export default function Teams() {
         const buildStateText = (date: string) => {
           const daySubmissions = allSubmissions.filter(s => s.submission_date === date);
           const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
-          const sorted = [...daySubmissions].sort((a, b) => {
-            const od = (STATUS_ORDER_TEXT[a.attendance_status] ?? 99) - (STATUS_ORDER_TEXT[b.attendance_status] ?? 99);
-            if (od !== 0) return od;
-            const na = a.profile ? `${a.profile.rank && a.profile.rank !== 'Other' ? a.profile.rank+' ':'' }${a.profile.full_name}` : '';
-            const nb = b.profile ? `${b.profile.rank && b.profile.rank !== 'Other' ? b.profile.rank+' ':'' }${b.profile.full_name}` : '';
-            return na.localeCompare(nb);
-          });
-          const lines: string[] = [`Parade State — ${fmtDate(date)}`, ''];
-          lines.push(`SUBMITTED (${sorted.length})`);
-          sorted.forEach(s => {
-            const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
-            const temp = s.temperature ? ` | ${s.temperature}C` : '';
-            const fever = s.temperature && s.temperature >= 37.5 ? ' (fever)' : '';
-            lines.push(`  ${name} - ${s.session_type} | ${s.attendance_status}${temp}${fever}${s.notes ? ` | ${s.notes}` : ''}`);
-          });
-          if (notSub.length > 0) {
-            lines.push('', `NOT SUBMITTED (${notSub.length})`);
-            notSub.forEach(m => {
-              const p = m.profile;
-              lines.push(`  ${p?.rank && p.rank !== 'Other' ? p.rank+' ' : ''}${p?.full_name ?? 'Member'}`);
-            });
-          }
-          return lines.join('\n');
+          return formatParadeState(daySubmissions, notSub, date, team?.name ?? 'Team');
         };
 
         return (
@@ -2244,21 +2299,7 @@ export default function Teams() {
           const nb = `${b.profile?.rank && b.profile.rank !== 'Other' ? b.profile.rank+' ':'' }${b.profile?.full_name ?? ''}`;
           return na.localeCompare(nb);
         });
-        const lines: string[] = [`Parade State - ${fmtDate(submissionPopupDate)}`, ''];
-        lines.push(`SUBMITTED (${sortedDaySubs.length})`);
-        sortedDaySubs.forEach(s => {
-          const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
-          const temp = s.temperature ? ` | ${s.temperature}C` : '';
-          const fever = s.temperature && s.temperature >= 37.5 ? ' (fever)' : '';
-          lines.push(`  ${name} - ${s.session_type} | ${s.attendance_status}${temp}${fever}${s.notes ? ` | ${s.notes}` : ''}`);
-        });
-        lines.push('');
-        lines.push(`NOT SUBMITTED (${sortedNotSub.length})`);
-        sortedNotSub.forEach(m => {
-          const mp = m.profile;
-          lines.push(`  ${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`);
-        });
-        const stateText = lines.join('\n');
+        const stateText = formatParadeState(sortedDaySubs, sortedNotSub, submissionPopupDate, team?.name ?? 'Team');
 
         return (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => setSubmissionPopupOpen(false)}>
