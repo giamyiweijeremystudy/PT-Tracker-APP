@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Settings, Palette, Bell, Globe, KeyRound, CheckCircle,
-  Moon, Sun, Mail, Smartphone, Loader2, Info,
+  Moon, Sun, Mail, Smartphone, Loader2, Info, Sparkles, Eye, EyeOff,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -82,6 +82,29 @@ export default function PTSettings() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminSuccess, setAdminSuccess] = useState(false);
 
+  const [geminiKey,        setGeminiKeyInput] = useState('');
+  const [geminiKeyVisible, setGeminiKeyVisible] = useState(false);
+  const [geminiKeySaved,   setGeminiKeySaved]   = useState(false);
+
+  const handleSaveGeminiKey = async () => {
+    if (!user) return;
+    const trimmed = geminiKey.trim();
+    const { error } = await supabase.from('user_settings').upsert(
+      { user_id: user.id, gemini_api_key: trimmed || null },
+      { onConflict: 'user_id' }
+    );
+    if (error) {
+      toast({ title: 'Error saving key', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setGeminiKeySaved(!!trimmed);
+    if (trimmed) {
+      toast({ title: 'Gemini API key saved ✓', description: 'PT Assistant will now use Gemini AI on all devices.' });
+    } else {
+      toast({ title: 'Gemini API key removed' });
+    }
+  };
+
   const loadSettings = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -101,6 +124,8 @@ export default function PTSettings() {
       };
       setSettings(s);
       setNotifEmail(data.notification_email ?? '');
+      setGeminiKeyInput(data.gemini_api_key ?? '');
+      setGeminiKeySaved(!!data.gemini_api_key);
       applyDarkMode(s.dark_mode);
     } else {
       const savedDark = localStorage.getItem('pt-dark-mode') === '1';
@@ -424,6 +449,51 @@ export default function PTSettings() {
               </Button>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Gemini AI */}
+      <Card className="border-border bg-card">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold text-card-foreground">
+            <Sparkles className="h-4 w-4 text-primary" /> PT Assistant — Gemini AI
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Enter your Google AI Studio API key to enable AI-powered responses in the PT Assistant. Get a free key at{' '}
+            <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">aistudio.google.com</a>.
+          </p>
+          {geminiKeySaved && (
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-xs font-medium">
+              <CheckCircle className="h-4 w-4" />
+              Gemini AI is active — PT Assistant is using AI mode
+            </div>
+          )}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                type={geminiKeyVisible ? 'text' : 'password'}
+                placeholder="AIzaSy..."
+                value={geminiKey}
+                onChange={e => { setGeminiKeyInput(e.target.value); setGeminiKeySaved(false); }}
+                className="bg-background text-sm pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setGeminiKeyVisible(v => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {geminiKeyVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <Button onClick={handleSaveGeminiKey} variant="outline" size="sm" className="shrink-0">
+              {geminiKey.trim() ? 'Save' : 'Clear'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The key is stored locally on this device only — it is never sent to any server other than Google.
+          </p>
         </CardContent>
       </Card>
 
