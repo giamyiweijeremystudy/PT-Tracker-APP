@@ -47,14 +47,19 @@ export async function callGemini(
   if (!apiKey) return '__error:No API key';
   if (!navigator.onLine) return null;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+  // Prepend system prompt as first user turn (v1 API doesn't support system_instruction)
+  const history = toGeminiHistory(conversationHistory);
+  const contents = [
+    { role: 'user', parts: [{ text: systemPrompt }] },
+    { role: 'model', parts: [{ text: 'Understood. I am your PT Assistant and will use your app data to give personalised answers.' }] },
+    ...history,
+    { role: 'user', parts: [{ text: userMessage }] },
+  ];
 
   const body = {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [
-      ...toGeminiHistory(conversationHistory),
-      { role: 'user', parts: [{ text: userMessage }] },
-    ],
+    contents,
     generationConfig: { temperature: 0.7, maxOutputTokens: 512 },
   };
 
