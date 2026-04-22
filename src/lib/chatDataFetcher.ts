@@ -242,3 +242,111 @@ export async function fetchChatData(query: string, userId: string): Promise<stri
     return "Something went wrong fetching that data. Please try again.";
   }
 }
+// ─── Full App Context for AI ───────────────────────────────────────────────────
+// Fetches a comprehensive snapshot of all user data to inject into the AI system prompt.
+// Runs queries in parallel for speed.
+
+export async function fetchFullAppContext(userId: string): Promise<string> {
+  try {
+    const [
+      profileRes,
+      ipptRes,
+      bmiRes,
+      activitiesRes,
+      eventsRes,
+      submissionsRes,
+      membershipRes,
+      progressModulesRes,
+    ] = await Promise.allSettled([
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      supabase.from('ippt_results').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(3),
+      supabase.from('bmi_results').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).single(),
+      supabase.from('activities').select('type, title, date, duration_minutes, distance_km, description').eq('user_id', userId).order('date', { ascending: false }).limit(10),
+      supabase.from('personal_events').select('title, event_date, event_type').eq('user_id', userId).gte('event_date', localDateStr()).order('event_date', { ascending: true }).limit(7),
+      supabase.from('team_submissions').select('submission_date, session_type, attendance_status').eq('user_id', userId).order('submission_date', { ascending: false }).limit(5),
+      supabase.from('team_members').select('team_id, team_role, teams(name)').eq('user_id', userId).limit(1).single(),
+      supabase.from('tracker_modules').select('exercise_label, emoji, metric_labels').eq('user_id', userId),
+    ]);
+
+    const sections: string[] = [];
+
+    // Profile
+    if (profileRes.status === 'fulfilled' && profileRes.value.data) {
+      const p = profileRes.value.data;
+      sections.push(`PROFILE\nName: ${p.full_name ?? 'Unknown'}\nRank: ${p.rank ?? 'N/A'}\nAge: ${p.age ?? 'N/A'}\nUnit: ${p.unit ?? 'N/A'}`);
+    }
+
+    // IPPT
+    if (ipptRes.status === 'fulfilled' && ipptRes.value.data?.length) {
+      const rows = ipptRes.value.data;
+      const lines = rows.map((r: any) =>
+        `  • ${r.total} pts (${r.award}) — PU: ${r.pushups}, SU: ${r.situps}, Run: ${fmtTime(r.run_seconds)} — Age ${r.age}`
+      );
+      sections.push(`IPPT RESULTS (latest 3)\n${lines.join('\n')}`);
+    } else {
+      sections.push('IPPT RESULTS\nNo IPPT results saved yet.');
+    }
+
+    // BMI
+    if (bmiRes.status === 'fulfilled' && bmiRes.value.data) {
+      const b = bmiRes.value.data;
+      sections.push(`BMI\nBMI: ${Number(b.bmi).toFixed(1)} (${b.category})\nHeight: ${b.height_cm}cm, Weight: ${b.weight_kg}kg`);
+    } else {
+      sections.push('BMI\nNo BMI data saved yet.');
+    }
+
+    // Activities
+    if (activitiesRes.status === 'fulfilled' && activitiesRes.value.data?.length) {
+      const acts = activitiesRes.value.data;
+      const lines = acts.map((a: any) => {
+        const parts = [`${a.type.replace(/_/g, ' ')} on ${a.date.slice(0, 10)}`];
+        if (a.title) parts.push(`"${a.title}"`);
+        if (a.duration_minutes) parts.push(`${a.duration_minutes}min`);
+        if (a.distance_km) parts.push(`${a.distance_km}km`);
+        return '  • ' + parts.join(' — ');
+      });
+      sections.push(`RECENT ACTIVITIES (last 10)\n${lines.join('\n')}`);
+    } else {
+      sections.push('RECENT ACTIVITIES\nNo activities logged yet.');
+    }
+
+    // Upcoming events
+    if (eventsRes.status === 'fulfilled' && eventsRes.value.data?.length) {
+      const evts = eventsRes.value.data;
+      const lines = evts.map((e: any) => `  • ${e.event_date.slice(0, 10)} — ${e.title} (${e.event_type})`);
+      sections.push(`UPCOMING EVENTS (next 7)\n${lines.join('\n')}`);
+    } else {
+      sections.push('UPCOMING EVENTS\nNone in the next 7 days.');
+    }
+
+    // Attendance submissions
+    if (submissionsRes.status === 'fulfilled' && submissionsRes.value.data?.length) {
+      const subs = submissionsRes.value.data;
+      const lines = subs.map((s: any) => `  • ${s.submission_date.slice(0, 10)} — ${s.session_type}: ${s.attendance_status}`);
+      sections.push(`RECENT ATTENDANCE\n${lines.join('\n')}`);
+    } else {
+      sections.push('RECENT ATTENDANCE\nNo submissions yet.');
+    }
+
+    // Team
+    if (membershipRes.status === 'fulfilled' && membershipRes.value.data) {
+      const m = membershipRes.value.data as any;
+      sections.push(`TEAM\nTeam: ${m.teams?.name ?? 'Unknown'}\nRole: ${Array.isArray(m.team_role) ? m.team_role.join(', ') : m.team_role}`);
+    } else {
+      sections.push('TEAM\nNot in a team.');
+    }
+
+    // Progress tracker modules
+    if (progressModulesRes.status === 'fulfilled' && progressModulesRes.value.data?.length) {
+      const mods = progressModulesRes.value.data;
+      const lines = mods.map((m: any) => `  • ${m.emoji} ${m.exercise_label} — tracks: ${m.metric_labels.join(', ')}`);
+      sections.push(`PROGRESS TRACKER EXERCISES\n${lines.join('\n')}`);
+    } else {
+      sections.push('PROGRESS TRACKER\nNo exercises set up yet.');
+    }
+
+    return sections.join('\n\n');
+  } catch (e) {
+    return 'App context unavailable.';
+  }
+}
