@@ -1,14 +1,10 @@
 // ─── Gemini Client ────────────────────────────────────────────────────────────
-// Calls Google AI Studio (Gemini) with the full app data context.
-// Returns null if offline, API key missing, or request fails —
-// caller should fall back to the local keyword engine.
 
 export interface GeminiMessage {
   role: 'user' | 'model';
   parts: { text: string }[];
 }
 
-// Build the system prompt injected with live app context
 export function buildSystemPrompt(appContext: string, userName: string): string {
   return `You are a PT (Physical Training) Assistant embedded in a fitness tracking app used by military personnel.
 Your name is PT Assistant. You are helpful, concise, and motivating.
@@ -22,62 +18,44 @@ ${appContext}
 
 Guidelines:
 - Use the app data above to give personalised, accurate answers.
-- If asked about IPPT scores, BMI, activities, schedule, team, or progress — refer to the data above.
 - Keep responses concise and actionable. Use bullet points where helpful.
 - If data is missing (shown as "No X yet"), encourage the user to log it.
-- You can suggest navigating to specific pages: Activities, Progress Tracker, Calculators, Schedule, Teams.
-- Do NOT make up data. If something isn't in the context, say so honestly.
+- You can suggest navigating to: Activities, Progress Tracker, Calculators, Schedule, Teams.
+- Do NOT make up data. If something is not in the context, say so honestly.
 - Today's date is ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
 }
 
-// Convert our internal message format to Gemini's content format
 export function toGeminiHistory(
   messages: { role: 'user' | 'bot'; text: string }[]
 ): GeminiMessage[] {
-  // Gemini requires alternating user/model turns — filter out consecutive same-role messages
   const history: GeminiMessage[] = [];
   for (const msg of messages) {
     const geminiRole = msg.role === 'user' ? 'user' : 'model';
-    // Skip if last message has same role (Gemini strict alternation)
     if (history.length > 0 && history[history.length - 1].role === geminiRole) continue;
     history.push({ role: geminiRole, parts: [{ text: msg.text }] });
   }
   return history;
 }
 
+// Returns AI text, or a string starting with "__error:" for visible debugging
 export async function callGemini(
   userMessage: string,
   conversationHistory: { role: 'user' | 'bot'; text: string }[],
   systemPrompt: string,
   apiKey: string,
 ): Promise<string | null> {
-  if (!apiKey) return null; // no key → use local fallback
-
-  // Check online status
+  if (!apiKey) return '__error:No API key';
   if (!navigator.onLine) return null;
 
-  const geminiHistory = toGeminiHistory(conversationHistory);
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
-    system_instruction: {
-      parts: [{ text: systemPrompt }],
-    },
+    system_instruction: { parts: [{ text: systemPrompt }] },
     contents: [
-      ...geminiHistory,
+      ...toGeminiHistory(conversationHistory),
       { role: 'user', parts: [{ text: userMessage }] },
     ],
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 512,
-    },
-    safetySettings: [
-      { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_ONLY_HIGH' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_ONLY_HIGH' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-    ],
+    generationConfig: { temperature: 0.7, maxOutputTokens: 512 },
   };
 
   try {
@@ -85,19 +63,20 @@ export async function callGemini(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000), // 30s timeout
+      signal: AbortSignal.timeout(30000),
     });
 
+    const data = await res.json();
+
     if (!res.ok) {
-      console.warn('[Gemini] API error:', res.status, await res.text());
-      return null;
+      const msg = data?.error?.message ?? `HTTP ${res.status}`;
+      return `__error:${msg}`;
     }
 
-    const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return text ?? null;
-  } catch (err) {
-    console.warn('[Gemini] Request failed (will use local fallback):', err);
-    return null;
+    if (!text) return `__error:Empty response — ${JSON.stringify(data).slice(0, 300)}`;
+    return text;
+  } catch (err: any) {
+    return `__error:${err?.message ?? 'fetch failed'}`;
   }
 }
