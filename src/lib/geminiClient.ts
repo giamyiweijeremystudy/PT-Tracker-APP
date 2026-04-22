@@ -47,7 +47,7 @@ export async function callGemini(
   if (!apiKey) return '__error:No API key';
   if (!navigator.onLine) return null;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
   const body = {
     system_instruction: { parts: [{ text: systemPrompt }] },
