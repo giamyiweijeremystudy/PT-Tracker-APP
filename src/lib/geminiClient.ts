@@ -85,7 +85,7 @@ export async function callGemini(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15000), // 15s timeout
+      signal: AbortSignal.timeout(30000), // 30s timeout
     });
 
     if (!res.ok) {
@@ -97,7 +97,7 @@ export async function callGemini(
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     return text ?? null;
   } catch (err) {
-    console.warn('[Gemini] Request failed:', err);
-    return null; // network error or timeout → fall back
+    console.warn('[Gemini] Request failed (will use local fallback):', err);
+    return null;
   }
 }
