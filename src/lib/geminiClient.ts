@@ -49,8 +49,8 @@ export async function callGemini(
   userMessage: string,
   conversationHistory: { role: 'user' | 'bot'; text: string }[],
   systemPrompt: string,
+  apiKey: string,
 ): Promise<string | null> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) return null; // no key → use local fallback
 
   // Check online status
