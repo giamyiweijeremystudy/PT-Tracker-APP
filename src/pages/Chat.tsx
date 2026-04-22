@@ -21,6 +21,7 @@ const WELCOME: BotMessage = {
   role: 'bot',
   text: "Hi! I'm your PT Assistant. Ask me anything about your training — scores, activities, team, schedule, progress and more.",
   timestamp: 0,
+  source: 'gemini', // use prose styling for welcome regardless of mode
 };
 
 // ─── Route suggestions based on response content ──────────────────────────────
@@ -117,7 +118,9 @@ export default function Chat() {
         appContextRef.current = await fetchFullAppContext(userId);
       }
       const systemPrompt = buildSystemPrompt(appContextRef.current, userName);
+      console.log('[Chat] Calling Gemini, key present:', !!GEMINI_API_KEY, 'online:', isOnline);
       const geminiReply = await callGemini(text, history, systemPrompt, GEMINI_API_KEY ?? '');
+      console.log('[Chat] Gemini reply received:', !!geminiReply);
 
       if (geminiReply) {
         responseText = geminiReply;
@@ -143,7 +146,7 @@ export default function Chat() {
       source,
     };
     addMessage(botMsg);
-  }, [input, thinking, messages, isOnline, !!GEMINI_API_KEY, userId, userName]);
+  }, [input, thinking, messages, isOnline, userId, userName]);
 
   const handleClear = () => {
     clearHistory(userId);
@@ -214,9 +217,7 @@ export default function Chat() {
               <div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap
                 ${msg.role === 'user'
                   ? 'bg-primary text-primary-foreground rounded-br-sm'
-                  : (msg as BotMessage).source === 'gemini'
-                    ? 'bg-card border rounded-bl-sm'
-                    : 'bg-card border rounded-bl-sm font-mono text-xs'
+                  : 'bg-card border rounded-bl-sm'
                 }`}>
                 {msg.text}
               </div>
@@ -292,7 +293,7 @@ export default function Chat() {
         <p className="text-xs text-muted-foreground text-center mt-2">
           {aiMode
             ? 'AI reads your live app data · conversation saved locally'
-            : !!!GEMINI_API_KEY
+            : !GEMINI_API_KEY
               ? 'Add VITE_GEMINI_API_KEY to enable AI mode'
               : 'Offline — using local search engine'
           }
