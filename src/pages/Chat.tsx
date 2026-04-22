@@ -56,6 +56,7 @@ export default function Chat() {
   const [thinking, setThinking] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [geminiKey, setGeminiKey] = useState<string>('');
+  const [debugStatus, setDebugStatus] = useState<string>('loading...');
 
   // Cached app context — refreshed once per session
   const appContextRef = useRef<string>('');
@@ -66,16 +67,23 @@ export default function Chat() {
 
   // Load shared Gemini key from app_config (set once by admin, used by all users)
   useEffect(() => {
-    if (!userId) return;
+    setDebugStatus('fetching key...');
     supabase
       .from('app_config')
       .select('value')
       .eq('key', 'gemini_api_key')
       .single()
-      .then(({ data }) => {
-        if (data?.value) setGeminiKey(data.value);
+      .then(({ data, error }) => {
+        if (error) {
+          setDebugStatus('db error: ' + error.message);
+        } else if (data?.value) {
+          setGeminiKey(data.value);
+          setDebugStatus('key loaded (' + data.value.slice(0, 8) + '...)');
+        } else {
+          setDebugStatus('no key found in app_config');
+        }
       });
-  }, [userId]);
+  }, []); // run once on mount — key is global, not user-specific
 
   // Online/offline listener
   useEffect(() => {
@@ -206,6 +214,11 @@ export default function Chat() {
             <X className="h-4 w-4" />
           </button>
         )}
+      </div>
+
+      {/* Debug banner — remove once Gemini is confirmed working */}
+      <div className="text-[10px] text-muted-foreground bg-muted/60 rounded px-2 py-1 mb-1 font-mono">
+        status: {debugStatus} | online: {String(isOnline)} | aiMode: {String(aiMode)}
       </div>
 
       {/* Messages */}
