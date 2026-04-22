@@ -1792,7 +1792,7 @@ export default function Teams() {
                         </SelectContent>
                       </Select>
                       <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSubmissionPopupOpen(true)}>
-                        <FileText className="h-3 w-3 mr-1" /> Parade State
+                        <FileText className="h-3 w-3 mr-1" /> Attendance
                       </Button>
                     </div>
                   </div>
@@ -2282,7 +2282,7 @@ export default function Teams() {
         );
       })()}
 
-      {/* ── Parade State Popup ── */}
+      {/* ── Attendance Popup ── */}
       {submissionPopupOpen && (() => {
         const STATUS_ORDER: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3 };
         const daySubs = allSubmissions.filter(s => s.submission_date === submissionPopupDate);
@@ -2311,7 +2311,7 @@ export default function Teams() {
               {/* Header */}
               <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b shrink-0 bg-background">
                 <div>
-                  <h2 className="text-base font-bold">Parade State</h2>
+                  <h2 className="text-base font-bold">Attendance</h2>
                   <p className="text-xs text-muted-foreground mt-0.5">{fmtDate(submissionPopupDate, { weekday: true })}</p>
                 </div>
                 <button onClick={() => setSubmissionPopupOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground ml-3 shrink-0 -mt-0.5">
@@ -2399,7 +2399,7 @@ export default function Teams() {
                     readOnly
                     value={stateText}
                     className="font-mono text-[10px] resize-none w-full bg-muted/30 border-muted"
-                    rows={Math.min(8, lines.length + 1)}
+                    rows={Math.min(8, stateText.split('\n').length + 1)}
                   />
                 </div>
               </div>
