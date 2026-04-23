@@ -24,6 +24,7 @@ import {
   Users, Plus, Copy, Trash2, Crown, MapPin, Activity,
   Lock, Settings, Thermometer, Calendar, CheckCircle2, Clock, Shield, Swords, Star, Pin, AlertCircle,
   BarChart2, MessageSquare, Bell, ChevronDown, Send, X as XIcon, Download, FileText, Users2, Trophy, Medal, Pencil,
+  Camera, Image as ImageIcon,
 } from 'lucide-react';
 
 // ─── Local date helper (respects device timezone, e.g. UTC+8) ─────────────────
@@ -212,6 +213,7 @@ type TeamSubmission = {
   session_type: 'PT'|'SFT'; attendance_status: string;
   sft_type: string|null; sft_custom: string|null;
   temperature: number|null; notes: string; created_at: string;
+  sft_screenshot_url: string|null;
 };
 
 type Tab = 'activities' | 'members' | 'submissions' | 'schedule' | 'leaderboard';
@@ -410,6 +412,10 @@ export default function Teams() {
 
   const [submissionPopupOpen, setSubmissionPopupOpen] = useState(false);
   const [submissionPopupDate, setSubmissionPopupDate] = useState(localDateStr(today));
+  const [screenshotPopupOpen, setScreenshotPopupOpen] = useState(false);
+  const [subScreenshotFile, setSubScreenshotFile] = useState<File | null>(null);
+  const [subScreenshotUploading, setSubScreenshotUploading] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const handleCreate = async () => {
     if (!createName.trim()) { toast({ title: 'Enter a team name', variant: 'destructive' }); return; }
@@ -798,6 +804,17 @@ export default function Teams() {
     fetchEvents();
   };
 
+  const uploadScreenshot = async (file: File, submissionId: string): Promise<string | null> => {
+    const ext = file.name.split('.').pop() ?? 'jpg';
+    const path = `${user!.id}/${submissionId}.${ext}`;
+    const { error } = await supabase.storage
+      .from('sft-screenshots')
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (error) { console.error('Screenshot upload error:', error); return null; }
+    const { data } = supabase.storage.from('sft-screenshots').getPublicUrl(path);
+    return data?.publicUrl ?? null;
+  };
+
   const handleSubmission = async () => {
     if (!team || !user) return;
     // Check for existing submission on this date (GMT+8 enforced by subDate)
@@ -813,7 +830,7 @@ export default function Teams() {
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from('team_submissions').insert({
+    const { data: inserted, error } = await supabase.from('team_submissions').insert({
       team_id: team.id, user_id: user.id,
       event_id: subEventId === 'none' ? null : subEventId,
       submission_date: subDate,
@@ -823,9 +840,21 @@ export default function Teams() {
       sft_custom: subType === 'SFT' && sftType === 'Others' ? sftCustom : null,
       temperature: subTemp ? parseFloat(subTemp) : null,
       notes: subNotes,
-    });
+    }).select().single();
+    if (error || !inserted) { setSubmitting(false); toast({ title: 'Error', description: error?.message, variant: 'destructive' }); return; }
+
+    // Upload screenshot if provided (SFT only)
+    if (subType === 'SFT' && subScreenshotFile) {
+      setSubScreenshotUploading(true);
+      const url = await uploadScreenshot(subScreenshotFile, inserted.id);
+      if (url) {
+        await supabase.from('team_submissions').update({ sft_screenshot_url: url }).eq('id', inserted.id);
+      }
+      setSubScreenshotUploading(false);
+      setSubScreenshotFile(null);
+    }
+
     setSubmitting(false);
-    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     toast({ title: 'Attendance submitted!' });
     setSubTemp(''); setSubNotes(''); setSftCustom('');
     fetchSubmissions();
@@ -1640,9 +1669,40 @@ export default function Teams() {
                   <Textarea placeholder="Any remarks..." value={subNotes} onChange={e => setSubNotes(e.target.value)} rows={2} />
                 </div>
 
-                <Button onClick={handleSubmission} disabled={submitting} className="w-full">
+                {/* SFT Screenshot upload */}
+                {subType === 'SFT' && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1.5">
+                      <Camera className="h-4 w-4" /> SFT Form Screenshot <span className="text-muted-foreground text-xs">(optional)</span>
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1 cursor-pointer">
+                        <div className={`flex items-center gap-2 rounded-lg border border-dashed px-3 py-2.5 text-sm transition-colors hover:bg-muted ${subScreenshotFile ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                          <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className={`truncate text-xs ${subScreenshotFile ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                            {subScreenshotFile ? subScreenshotFile.name : 'Tap to attach screenshot...'}
+                          </span>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => setSubScreenshotFile(e.target.files?.[0] ?? null)}
+                        />
+                      </label>
+                      {subScreenshotFile && (
+                        <button onClick={() => setSubScreenshotFile(null)} className="p-1.5 rounded hover:bg-muted text-muted-foreground shrink-0">
+                          <XIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Screenshot will be automatically deleted after 21 days.</p>
+                  </div>
+                )}
+
+                <Button onClick={handleSubmission} disabled={submitting || subScreenshotUploading} className="w-full">
                   <Clock className="h-4 w-4 mr-2" />
-                  {submitting ? 'Submitting...' : `Submit ${subType} Attendance`}
+                  {subScreenshotUploading ? 'Uploading screenshot...' : submitting ? 'Submitting...' : `Submit ${subType} Attendance`}
                 </Button>
               </CardContent>
             </Card>
@@ -1794,6 +1854,11 @@ export default function Teams() {
                       <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSubmissionPopupOpen(true)}>
                         <FileText className="h-3 w-3 mr-1" /> Attendance
                       </Button>
+                      {canManage && (
+                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setScreenshotPopupOpen(true)}>
+                          <Camera className="h-3 w-3 mr-1" /> Screenshots
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -2423,6 +2488,118 @@ export default function Teams() {
           </div>
         );
       })()}
+
+      {/* ── SFT Screenshots Popup (PT IC and Admin only) ── */}
+      {screenshotPopupOpen && canManage && (() => {
+        const daySubs = allSubmissions.filter(s =>
+          s.submission_date === submissionPopupDate &&
+          s.session_type === 'SFT' &&
+          s.sft_screenshot_url
+        );
+
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => setScreenshotPopupOpen(false)}>
+            <div
+              className="w-full max-w-2xl bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              style={{ maxHeight: 'min(90dvh, 700px)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b shrink-0">
+                <div>
+                  <h2 className="text-base font-bold flex items-center gap-2">
+                    <Camera className="h-4 w-4 text-primary" /> SFT Screenshots
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {fmtDate(submissionPopupDate, { weekday: true })} · visible to PT IC and Admin only · auto-deleted after 21 days
+                  </p>
+                </div>
+                <button onClick={() => setScreenshotPopupOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground ml-3 shrink-0">
+                  <XIcon className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto flex-1 p-5">
+                {daySubs.length === 0 ? (
+                  <div className="text-center py-16 text-muted-foreground">
+                    <Camera className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm font-medium">No screenshots for this date</p>
+                    <p className="text-xs mt-1 opacity-70">Screenshots are only submitted with SFT attendance</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {daySubs.map(s => {
+                      const name = s.profile
+                        ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank + ' ' : ''}${s.profile.full_name}`
+                        : 'Member';
+                      const daysLeft = Math.max(0, 21 - Math.floor(
+                        (Date.now() - new Date(s.submission_date).getTime()) / (1000 * 60 * 60 * 24)
+                      ));
+                      return (
+                        <div key={s.id} className="rounded-xl border bg-card overflow-hidden flex flex-col sm:flex-row">
+                          {/* Screenshot */}
+                          <div
+                            className="sm:w-48 shrink-0 bg-muted flex items-center justify-center cursor-pointer min-h-[120px]"
+                            onClick={() => setLightboxUrl(s.sft_screenshot_url)}
+                          >
+                            <img
+                              src={s.sft_screenshot_url!}
+                              alt="SFT screenshot"
+                              className="w-full h-full object-cover sm:w-48 sm:h-full max-h-48 sm:max-h-none"
+                            />
+                          </div>
+                          {/* Details */}
+                          <div className="p-3 flex-1 space-y-1.5">
+                            <p className="text-sm font-semibold">{name}</p>
+                            <div className="flex flex-wrap gap-1.5 text-xs">
+                              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                                {s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                {s.attendance_status}
+                              </span>
+                              {s.temperature != null && (
+                                <span className={`px-2 py-0.5 rounded-full font-medium ${s.temperature >= 37.5 ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground'}`}>
+                                  {s.temperature}°C
+                                </span>
+                              )}
+                            </div>
+                            {s.notes && <p className="text-xs text-muted-foreground italic">{s.notes}</p>}
+                            <p className="text-[10px] text-muted-foreground">
+                              Submitted {fmtDate(s.submission_date)} · deletes in {daysLeft} day{daysLeft !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Lightbox ── */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4 cursor-zoom-out"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img
+            src={lightboxUrl}
+            alt="Screenshot full view"
+            className="max-w-full max-h-full rounded-xl object-contain shadow-2xl"
+          />
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70"
+          >
+            <XIcon className="h-5 w-5" />
+          </button>
+        </div>
+      )}
 
       {/* ── Create Post Modal ── */}
       {showPostModal && (
