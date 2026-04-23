@@ -145,8 +145,12 @@ function formatParadeState(
   ];
 
   // Split into attending vs not attending
+  // For SFT: in_camp counts for attendance; personal is logging-only
   const attending    = submissions.filter(s => s.attendance_status === 'Participating');
   const notAttending = submissions.filter(s => s.attendance_status !== 'Participating');
+  const attendingInCamp = isSFT
+    ? attending.filter(s => !s.sft_kind || s.sft_kind === 'in_camp')
+    : attending;
 
   // Status abbreviation map
   const statusAbbr: Record<string, string> = {
@@ -161,20 +165,29 @@ function formatParadeState(
 ATTENDING (${attending.length})`);
 
   if (isSFT) {
-    // Group by sft_type
-    const groups: Record<string, any[]> = {};
-    attending.forEach(s => {
-      const key = s.sft_type === 'Others' && s.sft_custom ? s.sft_custom : (s.sft_type ?? 'Other');
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(s);
-    });
-    Object.entries(groups).forEach(([groupName, members]) => {
-      lines.push(`${groupName} (${members.length})`);
-      members.forEach((s, i) => {
-        const temp = s.temperature != null ? ` — ${s.temperature}°C` : '';
-        lines.push(`${i + 1}. ${getName(s)}${temp}`);
+    const pushGroup = (grpList: any[]) => {
+      const groups: Record<string, any[]> = {};
+      grpList.forEach(s => {
+        const key = s.sft_type === 'Others' && s.sft_custom ? s.sft_custom : (s.sft_type ?? 'Other');
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(s);
       });
-    });
+      Object.entries(groups).forEach(([groupName, members]) => {
+        lines.push(`${groupName} (${members.length})`);
+        members.forEach((s, i) => {
+          const temp = s.temperature != null ? ` — ${s.temperature}°C` : '';
+          lines.push(`${i + 1}. ${getName(s)}${temp}`);
+        });
+      });
+    };
+    const inCampList   = attending.filter(s => !s.sft_kind || s.sft_kind === 'in_camp');
+    const personalList = attending.filter(s => s.sft_kind === 'personal');
+    if (inCampList.length > 0) pushGroup(inCampList);
+    if (personalList.length > 0) {
+      lines.push(`
+PERSONAL SFT (${personalList.length})`);
+      pushGroup(personalList);
+    }
   } else {
     // PT — flat numbered list
     attending.forEach((s, i) => {
@@ -214,6 +227,7 @@ type TeamSubmission = {
   sft_type: string|null; sft_custom: string|null;
   temperature: number|null; notes: string; created_at: string;
   sft_screenshot_url: string|null;
+  sft_kind: 'in_camp' | 'personal' | null;
 };
 
 type Tab = 'activities' | 'members' | 'submissions' | 'schedule' | 'leaderboard';
@@ -466,6 +480,7 @@ export default function Teams() {
   const [subAttendance, setSubAttendance]   = useState<string>('Participating');
   const [sftType, setSftType]               = useState<string>('Running');
   const [sftCustom, setSftCustom]           = useState('');
+  const [sftKind, setSftKind]               = useState<'in_camp'|'personal'>('in_camp');
 
   // Edit submission state
   const [editingSubId, setEditingSubId]     = useState<string | null>(null);
@@ -478,6 +493,7 @@ export default function Teams() {
   const [adminSubTemp, setAdminSubTemp]     = useState('');
   const [adminSftType, setAdminSftType]     = useState<string>('Running');
   const [adminSftCustom, setAdminSftCustom] = useState('');
+  const [adminSftKind, setAdminSftKind]     = useState<'in_camp'|'personal'>('in_camp');
   const [adminSubmitting, setAdminSubmitting] = useState(false);
   const [showAdminSubModal, setShowAdminSubModal] = useState(false);
 
@@ -821,7 +837,7 @@ export default function Teams() {
       const txt = formatParadeState(sorted, notSubmitted, date, team?.name ?? 'Team');
       downloadTxt(`parade_state_${date}.txt`, txt.split('\n'));
     } else {
-      const rows: string[][] = [['Date','Name','Rank','Session','Attendance','SFT Type','Temperature','Notes']];
+      const rows: string[][] = [['Date','Name','Rank','Session','Attendance','SFT Type','SFT Kind','Temperature','Notes']];
       sorted.forEach(s => {
         rows.push([
           fmtDate(s.submission_date),
@@ -830,6 +846,7 @@ export default function Teams() {
           s.session_type,
           s.attendance_status,
           s.session_type==='SFT' ? `${s.sft_type ?? ''}${s.sft_custom ? '/'+s.sft_custom : ''}` : '',
+          s.session_type==='SFT' ? (s.sft_kind === 'personal' ? 'Personal' : 'In Camp') : '',
           s.temperature ? String(s.temperature) : '',
           s.notes ?? '',
         ]);
@@ -889,17 +906,20 @@ export default function Teams() {
 
   const handleSubmission = async () => {
     if (!team || !user) return;
-    // Check for existing submission on this date (GMT+8 enforced by subDate)
-    const { data: existing } = await supabase
-      .from('team_submissions')
-      .select('id')
-      .eq('team_id', team.id)
-      .eq('user_id', user.id)
-      .eq('submission_date', subDate)
-      .limit(1);
-    if (existing && existing.length > 0) {
-      toast({ title: 'Already submitted', description: 'You have already submitted attendance for this date. Edit your existing submission above.', variant: 'destructive' });
-      return;
+    // PT: block duplicate on same date. SFT: allow multiple per day.
+    if (subType === 'PT') {
+      const { data: existing } = await supabase
+        .from('team_submissions')
+        .select('id')
+        .eq('team_id', team.id)
+        .eq('user_id', user.id)
+        .eq('submission_date', subDate)
+        .eq('session_type', 'PT')
+        .limit(1);
+      if (existing && existing.length > 0) {
+        toast({ title: 'Already submitted', description: 'You have already submitted PT attendance for this date. Edit your existing submission above.', variant: 'destructive' });
+        return;
+      }
     }
     setSubmitting(true);
     const { data: inserted, error } = await supabase.from('team_submissions').insert({
@@ -910,6 +930,7 @@ export default function Teams() {
       attendance_status: subAttendance,
       sft_type: subType === 'SFT' ? sftType : null,
       sft_custom: subType === 'SFT' && sftType === 'Others' ? sftCustom : null,
+      sft_kind: subType === 'SFT' ? sftKind : null,
       temperature: subTemp ? parseFloat(subTemp) : null,
       notes: subNotes,
     }).select().single();
@@ -928,7 +949,7 @@ export default function Teams() {
 
     setSubmitting(false);
     toast({ title: 'Attendance submitted!' });
-    setSubTemp(''); setSubNotes(''); setSftCustom('');
+    setSubTemp(''); setSubNotes(''); setSftCustom(''); setSftKind('in_camp');
     fetchSubmissions();
     fetchAllSubmissions();
   };
@@ -941,6 +962,7 @@ export default function Teams() {
       attendance_status: subAttendance,
       sft_type: subType === 'SFT' ? sftType : null,
       sft_custom: subType === 'SFT' && sftType === 'Others' ? sftCustom : null,
+      sft_kind: subType === 'SFT' ? sftKind : null,
       temperature: subTemp ? parseFloat(subTemp) : null,
       notes: subNotes,
     }).eq('id', id);
@@ -948,7 +970,7 @@ export default function Teams() {
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     toast({ title: 'Submission updated!' });
     setEditingSubId(null);
-    setSubTemp(''); setSubNotes(''); setSftCustom('');
+    setSubTemp(''); setSubNotes(''); setSftCustom(''); setSftKind('in_camp');
     fetchSubmissions();
     fetchAllSubmissions();
   };
@@ -973,6 +995,7 @@ export default function Teams() {
       attendance_status: adminSubAttendance,
       sft_type: adminSubType === 'SFT' ? adminSftType : null,
       sft_custom: adminSubType === 'SFT' && adminSftType === 'Others' ? adminSftCustom : null,
+      sft_kind: adminSubType === 'SFT' ? adminSftKind : null,
       temperature: adminSubTemp ? parseFloat(adminSubTemp) : null,
       notes: adminSubNotes,
     });
@@ -1700,6 +1723,22 @@ export default function Teams() {
                 {/* SFT type */}
                 {subType === 'SFT' && (
                   <div className="space-y-2">
+                    <Label>SFT Mode</Label>
+                    <div className="flex rounded-lg border overflow-hidden">
+                      {(['in_camp', 'personal'] as const).map(k => (
+                        <button key={k} onClick={() => setSftKind(k)}
+                          className={`flex-1 py-2 text-sm font-semibold transition-colors ${sftKind === k ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                          {k === 'in_camp' ? '🏕️ In Camp' : '🏃 Personal'}
+                        </button>
+                      ))}
+                    </div>
+                    {sftKind === 'personal' && (
+                      <p className="text-xs text-muted-foreground">Personal SFT is for logging only and does not count towards attendance.</p>
+                    )}
+                  </div>
+                )}
+                {subType === 'SFT' && (
+                  <div className="space-y-2">
                     <Label>Type of SFT</Label>
                     <Select value={sftType} onValueChange={setSftType}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1804,6 +1843,16 @@ export default function Teams() {
                           ))}
                         </div>
                         {subType === 'SFT' && (
+                          <div className="flex rounded-lg border overflow-hidden">
+                            {(['in_camp', 'personal'] as const).map(k => (
+                              <button key={k} onClick={() => setSftKind(k)}
+                                className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${sftKind === k ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                                {k === 'in_camp' ? '🏕️ In Camp' : '🏃 Personal'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {subType === 'SFT' && (
                           <Select value={sftType} onValueChange={setSftType}>
                             <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                             <SelectContent>{SFT_TYPES.map(t2 => <SelectItem key={t2} value={t2} className="text-xs">{t2}</SelectItem>)}</SelectContent>
@@ -1852,8 +1901,13 @@ export default function Teams() {
                             <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
                             <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
                           </div>
-                          {s.session_type === 'SFT' && s.sft_type && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>
+                          {s.session_type === 'SFT' && (
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${s.sft_kind === 'personal' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
+                                {s.sft_kind === 'personal' ? '🏃 Personal' : '🏕️ In Camp'}
+                              </span>
+                              {s.sft_type && <p className="text-xs text-muted-foreground">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>}
+                            </div>
                           )}
                           {s.notes && <p className="text-xs text-muted-foreground mt-0.5">{s.notes}</p>}
                         </div>
@@ -1866,6 +1920,7 @@ export default function Teams() {
                               setSubAttendance(s.attendance_status);
                               setSftType(s.sft_type ?? 'Running');
                               setSftCustom(s.sft_custom ?? '');
+                              setSftKind((s.sft_kind as 'in_camp'|'personal') ?? 'in_camp');
                               setSubTemp(s.temperature ? String(s.temperature) : '');
                               setSubNotes(s.notes ?? '');
                             }}
@@ -1963,8 +2018,13 @@ export default function Teams() {
                                   </span>
                                 )}
                               </div>
-                              {s.session_type === 'SFT' && s.sft_type && (
-                                <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>
+                              {s.session_type === 'SFT' && (
+                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${s.sft_kind === 'personal' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
+                                    {s.sft_kind === 'personal' ? '🏃 Personal' : '🏕️ In Camp'}
+                                  </span>
+                                  {s.sft_type && <p className="text-xs text-muted-foreground">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>}
+                                </div>
                               )}
                               {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
                             </div>
@@ -2377,6 +2437,19 @@ export default function Teams() {
                     ))}
                   </div>
                 </div>
+                {adminSubType === 'SFT' && (
+                  <div className="space-y-2">
+                    <Label>SFT Mode</Label>
+                    <div className="flex rounded-lg border overflow-hidden">
+                      {(['in_camp', 'personal'] as const).map(k => (
+                        <button key={k} onClick={() => setAdminSftKind(k)}
+                          className={`flex-1 py-2 text-sm font-semibold transition-colors ${adminSftKind === k ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                          {k === 'in_camp' ? '🏕️ In Camp' : '🏃 Personal'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {adminSubType === 'SFT' && (
                   <div className="space-y-2">
                     <Label>Type of SFT</Label>
