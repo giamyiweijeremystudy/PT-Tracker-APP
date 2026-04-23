@@ -41,7 +41,7 @@ function getRunPts(sec:number,idx:number){const r=Math.ceil(sec/10)*10;for(const
 function calcIppt(pu:number,su:number,runSec:number,age:number){
   const idx=getAgeGroupIdx(age);
   const puP=getPts(PU_MAP,pu,idx),suP=getPts(SU_MAP,su,idx),runP=getRunPts(runSec,idx);
-  const total=puP+suP+runP;
+  const total=Math.min(100,puP+suP+runP);
   let award='Fail';
   if(puP>=1&&suP>=1&&runP>=1){if(total>=85)award='Gold';else if(total>=75)award='Silver';else if(total>=51)award='Pass';}
   return{total,award,pu:puP,su:suP,run:runP};
