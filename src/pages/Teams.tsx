@@ -336,6 +336,72 @@ function getFirstDayOfWeek(year: number, month: number) {
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
+// ─── Screenshot card with signed URL lazy loading ─────────────────────────────
+
+function ScreenshotCard({
+  name, storagePath, submission, daysLeft, onExpand, getSignedUrl,
+}: {
+  name: string;
+  storagePath: string;
+  submission: any;
+  daysLeft: number;
+  onExpand: (url: string) => void;
+  getSignedUrl: (path: string) => Promise<string | null>;
+}) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    getSignedUrl(storagePath).then(url => setSignedUrl(url));
+  }, [storagePath]);
+
+  const s = submission;
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden flex flex-col sm:flex-row">
+      {/* Thumbnail */}
+      <div
+        className="sm:w-40 shrink-0 bg-muted flex items-center justify-center cursor-zoom-in min-h-[100px] max-h-48 sm:max-h-none overflow-hidden"
+        onClick={() => signedUrl && onExpand(signedUrl)}
+      >
+        {signedUrl && !imgError ? (
+          <img
+            src={signedUrl}
+            alt="SFT screenshot"
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-1 text-muted-foreground p-4">
+            <Camera className="h-8 w-8 opacity-40" />
+            <span className="text-[10px]">{signedUrl ? 'Failed to load' : 'Loading...'}</span>
+          </div>
+        )}
+      </div>
+      {/* Details */}
+      <div className="p-3 flex-1 space-y-1.5">
+        <p className="text-sm font-semibold">{name}</p>
+        <div className="flex flex-wrap gap-1.5 text-xs">
+          <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+            {s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}
+          </span>
+          <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+            {s.attendance_status}
+          </span>
+          {s.temperature != null && (
+            <span className={`px-2 py-0.5 rounded-full font-medium ${s.temperature >= 37.5 ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground'}`}>
+              {s.temperature}°C
+            </span>
+          )}
+        </div>
+        {s.notes && <p className="text-xs text-muted-foreground italic">{s.notes}</p>}
+        <p className="text-[10px] text-muted-foreground">
+          Tap image to expand · deletes in {daysLeft} day{daysLeft !== 1 ? 's' : ''}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Teams() {
@@ -811,8 +877,16 @@ export default function Teams() {
       .from('sft-screenshots')
       .upload(path, file, { upsert: true, contentType: file.type });
     if (error) { console.error('Screenshot upload error:', error); return null; }
-    const { data } = supabase.storage.from('sft-screenshots').getPublicUrl(path);
-    return data?.publicUrl ?? null;
+    // Store the storage path itself, not the URL — we generate signed URLs on display
+    return path;
+  };
+
+  const getSignedUrl = async (path: string): Promise<string | null> => {
+    const { data, error } = await supabase.storage
+      .from('sft-screenshots')
+      .createSignedUrl(path, 3600); // 1 hour expiry
+    if (error) return null;
+    return data?.signedUrl ?? null;
   };
 
   const handleSubmission = async () => {
@@ -1840,7 +1914,7 @@ export default function Teams() {
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                       <Users2 className="h-3.5 w-3.5" /> All Team Submissions
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Select value={viewDate} onValueChange={setSubmissionPopupDate}>
                         <SelectTrigger className="h-7 text-xs w-36"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -1851,14 +1925,16 @@ export default function Teams() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSubmissionPopupOpen(true)}>
-                        <FileText className="h-3 w-3 mr-1" /> Attendance
-                      </Button>
-                      {canManage && (
-                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setScreenshotPopupOpen(true)}>
-                          <Camera className="h-3 w-3 mr-1" /> Screenshots
+                      <div className="flex gap-1.5">
+                        <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setSubmissionPopupOpen(true)}>
+                          <FileText className="h-3 w-3 mr-1" /> Attendance
                         </Button>
-                      )}
+                        {canManage && (
+                          <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setScreenshotPopupOpen(true)}>
+                            <Camera className="h-3 w-3 mr-1" /> Screenshots
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -2511,7 +2587,7 @@ export default function Teams() {
                     <Camera className="h-4 w-4 text-primary" /> SFT Screenshots
                   </h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {fmtDate(submissionPopupDate, { weekday: true })} · visible to PT IC and Admin only · auto-deleted after 21 days
+                    {fmtDate(submissionPopupDate, { weekday: true })} · PT IC & Admin only · auto-deleted after 21 days
                   </p>
                 </div>
                 <button onClick={() => setScreenshotPopupOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground ml-3 shrink-0">
@@ -2536,41 +2612,18 @@ export default function Teams() {
                       const daysLeft = Math.max(0, 21 - Math.floor(
                         (Date.now() - new Date(s.submission_date).getTime()) / (1000 * 60 * 60 * 24)
                       ));
+                      // sft_screenshot_url now stores the storage path
+                      const storagePath = s.sft_screenshot_url!;
                       return (
-                        <div key={s.id} className="rounded-xl border bg-card overflow-hidden flex flex-col sm:flex-row">
-                          {/* Screenshot */}
-                          <div
-                            className="sm:w-48 shrink-0 bg-muted flex items-center justify-center cursor-pointer min-h-[120px]"
-                            onClick={() => setLightboxUrl(s.sft_screenshot_url)}
-                          >
-                            <img
-                              src={s.sft_screenshot_url!}
-                              alt="SFT screenshot"
-                              className="w-full h-full object-cover sm:w-48 sm:h-full max-h-48 sm:max-h-none"
-                            />
-                          </div>
-                          {/* Details */}
-                          <div className="p-3 flex-1 space-y-1.5">
-                            <p className="text-sm font-semibold">{name}</p>
-                            <div className="flex flex-wrap gap-1.5 text-xs">
-                              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
-                                {s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}
-                              </span>
-                              <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                {s.attendance_status}
-                              </span>
-                              {s.temperature != null && (
-                                <span className={`px-2 py-0.5 rounded-full font-medium ${s.temperature >= 37.5 ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground'}`}>
-                                  {s.temperature}°C
-                                </span>
-                              )}
-                            </div>
-                            {s.notes && <p className="text-xs text-muted-foreground italic">{s.notes}</p>}
-                            <p className="text-[10px] text-muted-foreground">
-                              Submitted {fmtDate(s.submission_date)} · deletes in {daysLeft} day{daysLeft !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                        </div>
+                        <ScreenshotCard
+                          key={s.id}
+                          name={name}
+                          storagePath={storagePath}
+                          submission={s}
+                          daysLeft={daysLeft}
+                          onExpand={setLightboxUrl}
+                          getSignedUrl={getSignedUrl}
+                        />
                       );
                     })}
                   </div>
