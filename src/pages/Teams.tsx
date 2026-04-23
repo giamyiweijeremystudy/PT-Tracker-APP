@@ -336,44 +336,50 @@ function getFirstDayOfWeek(year: number, month: number) {
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-// ─── Screenshot card with signed URL lazy loading ─────────────────────────────
+// ─── Screenshot card ──────────────────────────────────────────────────────────
 
 function ScreenshotCard({
-  name, storagePath, submission, daysLeft, onExpand, getSignedUrl,
+  name, imageUrl, submission, daysLeft, onExpand,
 }: {
   name: string;
-  storagePath: string;
+  imageUrl: string;
   submission: any;
   daysLeft: number;
   onExpand: (url: string) => void;
-  getSignedUrl: (path: string) => Promise<string | null>;
 }) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    getSignedUrl(storagePath).then(url => setSignedUrl(url));
-  }, [storagePath]);
-
   const s = submission;
+
   return (
     <div className="rounded-xl border bg-card overflow-hidden flex flex-col sm:flex-row">
       {/* Thumbnail */}
       <div
-        className="sm:w-40 shrink-0 bg-muted flex items-center justify-center cursor-zoom-in min-h-[100px] max-h-48 sm:max-h-none overflow-hidden"
-        onClick={() => signedUrl && onExpand(signedUrl)}
+        className="sm:w-40 w-full shrink-0 bg-muted flex items-center justify-center cursor-zoom-in overflow-hidden"
+        style={{ minHeight: '120px' }}
+        onClick={() => !imgError && onExpand(imageUrl)}
       >
-        {signedUrl && !imgError ? (
-          <img
-            src={signedUrl}
-            alt="SFT screenshot"
-            className="w-full h-full object-cover"
-            onError={() => setImgError(true)}
-          />
+        {!imgError ? (
+          <>
+            {!imgLoaded && (
+              <div className="absolute flex flex-col items-center gap-1 text-muted-foreground">
+                <Camera className="h-8 w-8 opacity-30 animate-pulse" />
+                <span className="text-[10px]">Loading...</span>
+              </div>
+            )}
+            <img
+              src={imageUrl}
+              alt="SFT screenshot"
+              className={`w-full h-full object-cover transition-opacity ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+              style={{ maxHeight: '160px' }}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => { setImgError(true); setImgLoaded(false); }}
+            />
+          </>
         ) : (
           <div className="flex flex-col items-center gap-1 text-muted-foreground p-4">
-            <Camera className="h-8 w-8 opacity-40" />
-            <span className="text-[10px]">{signedUrl ? 'Failed to load' : 'Loading...'}</span>
+            <Camera className="h-8 w-8 opacity-30" />
+            <span className="text-[10px]">Failed to load</span>
           </div>
         )}
       </div>
@@ -877,16 +883,8 @@ export default function Teams() {
       .from('sft-screenshots')
       .upload(path, file, { upsert: true, contentType: file.type });
     if (error) { console.error('Screenshot upload error:', error); return null; }
-    // Store the storage path itself, not the URL — we generate signed URLs on display
-    return path;
-  };
-
-  const getSignedUrl = async (path: string): Promise<string | null> => {
-    const { data, error } = await supabase.storage
-      .from('sft-screenshots')
-      .createSignedUrl(path, 3600); // 1 hour expiry
-    if (error) return null;
-    return data?.signedUrl ?? null;
+    const { data } = supabase.storage.from('sft-screenshots').getPublicUrl(path);
+    return data?.publicUrl ?? null;
   };
 
   const handleSubmission = async () => {
@@ -2612,17 +2610,14 @@ export default function Teams() {
                       const daysLeft = Math.max(0, 21 - Math.floor(
                         (Date.now() - new Date(s.submission_date).getTime()) / (1000 * 60 * 60 * 24)
                       ));
-                      // sft_screenshot_url now stores the storage path
-                      const storagePath = s.sft_screenshot_url!;
                       return (
                         <ScreenshotCard
                           key={s.id}
                           name={name}
-                          storagePath={storagePath}
+                          imageUrl={s.sft_screenshot_url!}
                           submission={s}
                           daysLeft={daysLeft}
                           onExpand={setLightboxUrl}
-                          getSignedUrl={getSignedUrl}
                         />
                       );
                     })}
