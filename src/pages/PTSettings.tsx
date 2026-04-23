@@ -11,14 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Settings, Palette, Bell, Globe, KeyRound, CheckCircle,
-  Moon, Sun, Mail, Smartphone, Loader2, Info, Sparkles, Eye, EyeOff,
+  Moon, Sun, Mail, Smartphone, Loader2, Info,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const ADMIN_KEY = 'MECH>AV';
 
 // VAPID public key — set VITE_VAPID_PUBLIC_KEY in .env
-// Generate with: npx web-push generate-vapid-keys
 const VAPID_PUBLIC_KEY = (import.meta as any).env?.VITE_VAPID_PUBLIC_KEY || '';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -82,29 +81,6 @@ export default function PTSettings() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminSuccess, setAdminSuccess] = useState(false);
 
-  const [geminiKey,        setGeminiKeyInput] = useState('');
-  const [geminiKeyVisible, setGeminiKeyVisible] = useState(false);
-  const [geminiKeySaved,   setGeminiKeySaved]   = useState(false);
-
-  const handleSaveGeminiKey = async () => {
-    if (!user) return;
-    const trimmed = geminiKey.trim();
-    const { error } = await supabase.from('app_config').upsert(
-      { key: 'gemini_api_key', value: trimmed || null },
-      { onConflict: 'key' }
-    );
-    if (error) {
-      toast({ title: 'Error saving key', description: error.message, variant: 'destructive' });
-      return;
-    }
-    setGeminiKeySaved(!!trimmed);
-    if (trimmed) {
-      toast({ title: 'Gemini API key saved ✓', description: 'All users will now have AI mode enabled.' });
-    } else {
-      toast({ title: 'Gemini API key removed — all users reverted to local mode.' });
-    }
-  };
-
   const loadSettings = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -124,7 +100,6 @@ export default function PTSettings() {
       };
       setSettings(s);
       setNotifEmail(data.notification_email ?? '');
-      // gemini key loaded separately below
       applyDarkMode(s.dark_mode);
     } else {
       const savedDark = localStorage.getItem('pt-dark-mode') === '1';
@@ -134,17 +109,6 @@ export default function PTSettings() {
   }, [user]);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
-
-  useEffect(() => {
-    supabase
-      .from('app_config')
-      .select('value')
-      .eq('key', 'gemini_api_key')
-      .single()
-      .then(({ data }) => {
-        if (data?.value) { setGeminiKeyInput(data.value); setGeminiKeySaved(true); }
-      });
-  }, []);
 
   useEffect(() => {
     const supported = 'serviceWorker' in navigator && 'PushManager' in window && !!VAPID_PUBLIC_KEY;
@@ -192,124 +156,135 @@ export default function PTSettings() {
       const permission = await Notification.requestPermission();
       setPushPermission(permission);
       if (permission !== 'granted') {
-        toast({ title: 'Permission denied', description: 'Allow notifications in browser settings.', variant: 'destructive' });
+        toast({ title: 'Permission denied', description: 'Enable notifications in browser settings.', variant: 'destructive' });
         setPushLoading(false);
         return;
       }
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly:      true,
+
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      const subJson = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+
       const { error } = await supabase.from('push_subscriptions').upsert({
-        user_id:  user!.id,
-        endpoint: subJson.endpoint,
-        p256dh:   subJson.keys.p256dh,
-        auth:     subJson.keys.auth,
-      }, { onConflict: 'endpoint' });
-      if (error) throw error;
-      setSettings(s => ({ ...s, push_enabled: true }));
-      toast({ title: 'Push notifications enabled ✓' });
-    } catch (e: any) {
-      toast({ title: 'Could not enable push', description: e.message, variant: 'destructive' });
+        user_id: user?.id,
+        endpoint: subscription.endpoint,
+        p256dh: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('p256dh') || []))),
+        auth: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey('auth') || []))),
+      }, { onConflict: 'user_id,endpoint' });
+
+      if (error) {
+        toast({ title: 'Subscription failed', description: error.message, variant: 'destructive' });
+      } else {
+        setSettings(s => ({ ...s, push_enabled: true }));
+        toast({ title: 'Push enabled ✓' });
+      }
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setPushLoading(false);
     }
-    setPushLoading(false);
   };
 
   const handleTestPush = async () => {
     if (!user) return;
     setPushLoading(true);
     try {
-      const { error } = await supabase.functions.invoke('send-notifications', {
-        body: { user_id: user.id, title: '🗓️ Test Notification', body: 'Push notifications are working!', url: '/schedule', channels: ['push'] },
+      const response = await fetch('/api/send-notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.id}` },
+        body: JSON.stringify({
+          user_id: user.id,
+          title: '🧪 Test Notification',
+          body: 'This is a test push notification from PT App.',
+          url: '/schedule',
+          channels: ['push'],
+        }),
       });
-      if (error) throw error;
-      toast({ title: 'Test sent!' });
-    } catch (e: any) {
-      toast({ title: 'Test failed', description: e.message, variant: 'destructive' });
+      if (response.ok) {
+        toast({ title: 'Test push sent ✓' });
+      } else {
+        toast({ title: 'Failed to send', variant: 'destructive' });
+      }
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Unknown', variant: 'destructive' });
+    } finally {
+      setPushLoading(false);
     }
-    setPushLoading(false);
   };
 
   const handleTestEmail = async () => {
     if (!user) return;
     setPushLoading(true);
     try {
-      const { error } = await supabase.functions.invoke('send-notifications', {
-        body: { user_id: user.id, title: '🗓️ Test Email Reminder', body: 'Email reminders from PT App are working!', url: '/schedule', channels: ['email'] },
+      const response = await fetch('/api/send-notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.id}` },
+        body: JSON.stringify({
+          user_id: user.id,
+          title: '🧪 Test Email',
+          body: 'This is a test email reminder from PT App.',
+          url: '/schedule',
+          channels: ['email'],
+        }),
       });
-      if (error) throw error;
-      toast({ title: 'Test email sent!' });
-    } catch (e: any) {
-      toast({ title: 'Test failed', description: e.message, variant: 'destructive' });
+      if (response.ok) {
+        toast({ title: 'Test email sent ✓' });
+      } else {
+        toast({ title: 'Failed to send', variant: 'destructive' });
+      }
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Unknown', variant: 'destructive' });
+    } finally {
+      setPushLoading(false);
     }
-    setPushLoading(false);
   };
 
   const handleAdminKey = async () => {
-    if (adminKey !== ADMIN_KEY) {
+    if (adminKey.trim() !== ADMIN_KEY) {
       toast({ title: 'Invalid key', variant: 'destructive' });
-      setAdminKey('');
       return;
     }
+    if (!user) return;
     setAdminLoading(true);
-    const { error } = await supabase.from('profiles').update({ is_admin: true }).eq('id', user!.id);
+    const { error } = await supabase.from('profiles').update({ is_admin: true }).eq('user_id', user.id);
     setAdminLoading(false);
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } else {
       setAdminSuccess(true);
-      setAdminKey('');
-      toast({ title: 'Admin access granted', description: 'You can now create teams.' });
+      toast({ title: 'Admin access granted ✓' });
     }
   };
 
   const PushStatusBadge = () => {
-    if (!pushSupported) return <Badge variant="secondary" className="text-[10px] h-4">Not available</Badge>;
-    if (pushPermission === 'denied') return <Badge variant="destructive" className="text-[10px] h-4">Blocked</Badge>;
-    if (settings.push_enabled && pushPermission === 'granted') return (
-      <Badge className="text-[10px] h-4 bg-green-600 dark:bg-green-500">Active</Badge>
-    );
-    return null;
+    if (!pushSupported) return <Badge variant="secondary" className="text-xs">Not supported</Badge>;
+    if (pushPermission === 'denied') return <Badge variant="destructive" className="text-xs">Blocked</Badge>;
+    if (pushPermission === 'granted') return <Badge variant="default" className="text-xs">Enabled</Badge>;
+    return <Badge variant="outline" className="text-xs">Prompt</Badge>;
   };
 
-  if (loading) {
-    return (
-      <div className="max-w-lg mx-auto flex items-center justify-center h-40">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  if (loading) return <div className="p-8 text-center">Loading settings...</div>;
 
   return (
-    <div className="max-w-lg mx-auto space-y-5 pb-10">
-      <div className="flex items-center gap-3">
-        <Settings className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-      </div>
+    <div className="space-y-4 max-w-2xl mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-6">Settings</h1>
 
-      {/* Appearance */}
+      {/* Display & Theme */}
       <Card className="border-border bg-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-semibold text-card-foreground">
-            <Palette className="h-4 w-4 text-primary" /> Appearance
+            <Palette className="h-4 w-4 text-primary" /> Display & Theme
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-                {settings.dark_mode
-                  ? <Moon className="h-4 w-4 text-indigo-400" />
-                  : <Sun className="h-4 w-4 text-amber-500" />}
+                <Moon className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div>
-                <Label className="text-sm font-medium cursor-pointer">Dark Mode</Label>
-                <p className="text-xs text-muted-foreground leading-none mt-0.5">
-                  {settings.dark_mode ? 'Dark theme active' : 'Light theme active'}
-                </p>
-              </div>
+              <Label className="text-sm font-medium cursor-pointer">Dark Mode</Label>
             </div>
             <Switch checked={settings.dark_mode} onCheckedChange={handleDarkMode} />
           </div>
@@ -320,29 +295,33 @@ export default function PTSettings() {
       <Card className="border-border bg-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-semibold text-card-foreground">
-            <Globe className="h-4 w-4 text-primary" /> Preferences
+            <Settings className="h-4 w-4 text-primary" /> Preferences
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Measurement Units</Label>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Units</Label>
             <Select value={settings.units} onValueChange={v => setSettings(s => ({ ...s, units: v }))}>
-              <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="bg-background">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="metric">Metric (kg, cm, km)</SelectItem>
-                <SelectItem value="imperial">Imperial (lbs, in, mi)</SelectItem>
+                <SelectItem value="metric">Metric (kg, cm)</SelectItem>
+                <SelectItem value="imperial">Imperial (lbs, in)</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
+
+          <div className="space-y-2">
             <Label className="text-sm font-medium">Language</Label>
             <Select value={settings.language} onValueChange={v => setSettings(s => ({ ...s, language: v }))}>
-              <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="bg-background">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="en">English</SelectItem>
-                <SelectItem value="zh">中文 (Chinese)</SelectItem>
-                <SelectItem value="ms">Bahasa Melayu</SelectItem>
-                <SelectItem value="ta">தமிழ் (Tamil)</SelectItem>
+                <SelectItem value="es">Español</SelectItem>
+                <SelectItem value="fr">Français</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -353,7 +332,7 @@ export default function PTSettings() {
       <Card className="border-border bg-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-semibold text-card-foreground">
-            <Smartphone className="h-4 w-4 text-primary" /> Push Notifications
+            <Bell className="h-4 w-4 text-primary" /> Schedule Reminders (Push)
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -383,11 +362,11 @@ export default function PTSettings() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm font-medium cursor-pointer">Schedule Reminders</Label>
+                  <Label className="text-sm font-medium cursor-pointer">Enable Schedule Reminders</Label>
                   <PushStatusBadge />
                 </div>
                 <p className="text-xs text-muted-foreground leading-none mt-0.5">
-                  Notified at 07:00 for today's events
+                  Notified at 07:00 SGT for today's events
                 </p>
               </div>
             </div>
@@ -425,7 +404,7 @@ export default function PTSettings() {
               <div>
                 <Label className="text-sm font-medium cursor-pointer">Important Schedule Reminders</Label>
                 <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 max-w-[220px]">
-                  Email sent at 07:00 for preset events, or immediately if added after 07:00 today
+                  Email sent at 07:00 SGT for preset events, or immediately if added after 07:00 today
                 </p>
               </div>
             </div>
@@ -459,51 +438,6 @@ export default function PTSettings() {
               </Button>
             </>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Gemini AI */}
-      <Card className="border-border bg-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base font-semibold text-card-foreground">
-            <Sparkles className="h-4 w-4 text-primary" /> PT Assistant — Gemini AI
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Set a shared Gemini API key for all users of this app. Get a free key at{' '}
-            <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">aistudio.google.com</a>.
-          </p>
-          {geminiKeySaved && (
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-xs font-medium">
-              <CheckCircle className="h-4 w-4" />
-              Gemini AI is active — all users have AI mode enabled
-            </div>
-          )}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                type={geminiKeyVisible ? 'text' : 'password'}
-                placeholder="AIzaSy..."
-                value={geminiKey}
-                onChange={e => { setGeminiKeyInput(e.target.value); setGeminiKeySaved(false); }}
-                className="bg-background text-sm pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setGeminiKeyVisible(v => !v)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {geminiKeyVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <Button onClick={handleSaveGeminiKey} variant="outline" size="sm" className="shrink-0">
-              {geminiKey.trim() ? 'Save' : 'Clear'}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            The key is stored locally on this device only — it is never sent to any server other than Google.
-          </p>
         </CardContent>
       </Card>
 
