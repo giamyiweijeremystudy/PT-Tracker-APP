@@ -14,7 +14,7 @@ const TOPIC_TO_QUERY: Record<string, string[]> = {
   team:        ['team_summary'],
   members:     ['team_summary'],
   leaderboard: ['my_rank'],
-  at_risk:     ['at_risk_members'],
+  at_risk:     [], // removed — only show user's own data to AI
   schedule:    ['upcoming_events'],
   submissions: ['my_submissions'],
   calories:    [],   // calculator only — no stored data
@@ -126,80 +126,32 @@ export async function fetchChatData(query: string, userId: string): Promise<stri
       case 'team_summary': {
         const { data: membership } = await supabase
           .from('team_members')
-          .select('team_id, teams(name)')
+          .select('team_id, team_role, teams(name)')
           .eq('user_id', userId)
           .limit(1)
           .single();
         if (!membership) return "You're not in a team yet. Join one from the Teams page.";
-        const teamId = membership.team_id;
-        const [membersRes, feedRes] = await Promise.all([
-          supabase.from('team_members').select('user_id', { count: 'exact' }).eq('team_id', teamId),
-          supabase.from('team_activities').select('user_id', { count: 'exact' }).eq('team_id', teamId),
-        ]);
         const teamName = (membership as any).teams?.name ?? 'Your team';
-        return `${teamName}:\n• Members: ${membersRes.count ?? 0}\n• Total activities shared: ${feedRes.count ?? 0}`;
+        const roles = Array.isArray(membership.team_role) ? membership.team_role.join(', ') : (membership.team_role ?? 'Member');
+        // Only return what the user themselves can see — their own membership info
+        return `Team: ${teamName}\nYour role: ${roles}`;
       }
 
       case 'my_rank': {
-        const { data: membership } = await supabase
-          .from('team_members')
-          .select('team_id')
+        // Only fetch the user's own IPPT result — don't pull other members' data
+        const { data: myIppt } = await supabase
+          .from('ippt_results')
+          .select('total, award')
           .eq('user_id', userId)
+          .order('created_at', { ascending: false })
           .limit(1)
           .single();
-        if (!membership) return "You're not in a team. Join one to see rankings.";
-        const teamId = membership.team_id;
-
-        const { data: members } = await supabase
-          .from('team_members')
-          .select('user_id, profile:profiles(full_name, ippt_score)')
-          .eq('team_id', teamId);
-
-        if (!members || members.length === 0) return "No team members found.";
-
-        const scored = (members as any[])
-          .filter(m => m.profile?.ippt_score != null)
-          .sort((a, b) => b.profile.ippt_score - a.profile.ippt_score);
-
-        const myRank = scored.findIndex((m: any) => m.user_id === userId) + 1;
-        const myEntry = scored.find((m: any) => m.user_id === userId);
-
-        if (!myEntry) return `You have ${scored.length} ranked members in your team but no IPPT score saved yet.\nSave your IPPT result in the Calculator to appear on the leaderboard.`;
-        return `Your IPPT leaderboard rank: #${myRank} of ${scored.length}\nScore: ${myEntry.profile.ippt_score} pts`;
+        if (!myIppt) return "No IPPT score saved yet. Use the IPPT Calculator to record your score.";
+        return `Your IPPT score: ${myIppt.total} pts (${myIppt.award})\nUse the Leaderboard in the Teams page to compare with teammates.`;
       }
 
       case 'at_risk_members': {
-        const { data: membership } = await supabase
-          .from('team_members')
-          .select('team_id, team_role')
-          .eq('user_id', userId)
-          .limit(1)
-          .single();
-        if (!membership) return "You're not in a team.";
-        const roles: string[] = Array.isArray(membership.team_role) ? membership.team_role : [membership.team_role];
-        if (!roles.includes('admin') && !roles.includes('pt_ic')) {
-          return "This query is only available to Team Admins and PT ICs.";
-        }
-        const teamId = membership.team_id;
-        const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const { data: members } = await supabase
-          .from('team_members')
-          .select('user_id, profile:profiles(full_name, rank)')
-          .eq('team_id', teamId);
-        const { data: recentActivity } = await supabase
-          .from('team_activities')
-          .select('user_id')
-          .eq('team_id', teamId)
-          .gte('created_at', thirtyDaysAgo.toISOString());
-
-        const activeIds = new Set((recentActivity ?? []).map((a: any) => a.user_id));
-        const inactive = (members ?? []).filter((m: any) => !activeIds.has(m.user_id));
-
-        if (inactive.length === 0) return "All team members have been active in the last 30 days. 💪";
-        const names = inactive.map((m: any) =>
-          `  • ${m.profile?.rank && m.profile.rank !== 'Other' ? m.profile.rank + ' ' : ''}${m.profile?.full_name ?? 'Member'}`
-        ).join('\n');
-        return `${inactive.length} member${inactive.length !== 1 ? 's' : ''} inactive in the last 30 days:\n${names}`;
+        return "For team activity data, check the Teams page directly.";
       }
 
       case 'upcoming_events': {
@@ -328,10 +280,11 @@ export async function fetchFullAppContext(userId: string): Promise<string> {
       sections.push('RECENT ATTENDANCE\nNo submissions yet.');
     }
 
-    // Team
+    // Team — only the user's own membership, no other members' data
     if (membershipRes.status === 'fulfilled' && membershipRes.value.data) {
       const m = membershipRes.value.data as any;
-      sections.push(`TEAM\nTeam: ${m.teams?.name ?? 'Unknown'}\nRole: ${Array.isArray(m.team_role) ? m.team_role.join(', ') : m.team_role}`);
+      const role = Array.isArray(m.team_role) ? m.team_role.join(', ') : (m.team_role ?? 'Member');
+      sections.push(`TEAM\nTeam: ${m.teams?.name ?? 'Unknown'}\nYour role: ${role}\nNote: You can only see your own data. Direct team member queries to the Teams page.`);
     } else {
       sections.push('TEAM\nNot in a team.');
     }
