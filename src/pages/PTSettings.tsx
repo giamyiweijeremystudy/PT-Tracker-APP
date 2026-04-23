@@ -404,7 +404,7 @@ export default function PTSettings() {
               <div>
                 <Label className="text-sm font-medium cursor-pointer">Important Schedule Reminders</Label>
                 <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 max-w-[220px]">
-                  Email sent at 07:00 SGT for preset events, or immediately if added after 07:00 today
+                  Email sent at 07:00 SGT for preset events
                 </p>
               </div>
             </div>
