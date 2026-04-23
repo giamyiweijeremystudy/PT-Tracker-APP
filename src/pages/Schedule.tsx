@@ -247,37 +247,64 @@ export default function Schedule() {
           <div className="grid grid-cols-7 gap-y-1">
             {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
             {Array.from({ length: daysInMonth }).map((_, i) => {
-              const d        = i + 1;
-              const isSelected = selectedDay === d;
-              const todayMark  = isToday(d);
-              const hasEvents  = eventsOnDay(d).length > 0;
-              const isHoliday  = !!holidayOnDay(d);
-              const hasTeam    = eventsOnDay(d).some(e => e.source === 'team');
+              const d          = i + 1;
+              const isSelected  = selectedDay === d;
+              const todayMark   = isToday(d);
+              const dayEvts     = eventsOnDay(d);
+              const isHoliday   = !!holidayOnDay(d);
+              const hasPersonal = dayEvts.some(e => e.source === 'personal');
+              const hasTeam     = dayEvts.some(e => e.source === 'team');
+              // Build ring segments: holiday=red, team=blue-500, personal=purple
+              const segments: string[] = [];
+              if (isHoliday)   segments.push('#f87171');   // red-400
+              if (hasTeam)     segments.push('#3b82f6');   // blue-500
+              if (hasPersonal) segments.push('#a855f7');   // purple-500
+              const showRing = segments.length > 0 && !isSelected;
+              // SVG ring: circle r=17, circumference≈106.8, split evenly with 2px gap
+              const r = 17, circ = 2 * Math.PI * r;
+              const gap = 2;
+              const n = segments.length;
+              const segLen = (circ - n * gap) / n;
               return (
                 <button key={d} onClick={() => setSelectedDay(isSelected ? null : d)}
-                  className={`relative mx-auto flex flex-col h-9 w-9 items-center justify-center rounded-full text-sm transition-colors
+                  className={`relative mx-auto flex items-center justify-center h-9 w-9 text-sm transition-colors rounded-full
                     ${isSelected ? 'bg-primary text-primary-foreground font-semibold' : ''}
-                    ${todayMark && !isSelected ? 'border border-primary text-primary font-semibold' : ''}
+                    ${todayMark && !isSelected ? 'text-primary font-semibold' : ''}
                     ${isHoliday && !isSelected && !todayMark ? 'text-red-500' : ''}
                     ${!isSelected && !todayMark && !isHoliday ? 'hover:bg-muted text-foreground' : ''}`}>
-                  {d}
-                  {(hasEvents || isHoliday) && !isSelected && (
-                    <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                      {isHoliday  && <span className="h-1 w-1 rounded-full bg-red-400" />}
-                      {hasTeam    && <span className="h-1 w-1 rounded-full bg-blue-500" />}
-                      {hasEvents && !hasTeam && <span className="h-1 w-1 rounded-full bg-primary" />}
-                    </span>
+                  {/* Today solid ring behind content */}
+                  {todayMark && !isSelected && (
+                    <span className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none" />
                   )}
+                  {showRing && (
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
+                      {segments.map((color, si) => {
+                        const offset = si * (segLen + gap);
+                        return (
+                          <circle key={si}
+                            cx="18" cy="18" r={r}
+                            fill="none"
+                            stroke={color}
+                            strokeWidth="2.5"
+                            strokeDasharray={`${segLen} ${circ - segLen}`}
+                            strokeDashoffset={-offset}
+                            strokeLinecap="round"
+                          />
+                        );
+                      })}
+                    </svg>
+                  )}
+                  {d}
                 </button>
               );
             })}
           </div>
 
           {/* Legend */}
-          <div className="flex items-center gap-4 mt-3 pt-2 border-t justify-center flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" /> Public Holiday</div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-blue-500 inline-block" /> Team Event</div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-primary inline-block" /> Personal Event</div>
+          <div className="flex items-center gap-3 mt-3 pt-2 border-t justify-center flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" /> Holiday</div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-blue-500 inline-block" /> Team</div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-purple-500 inline-block" /> Personal</div>
           </div>
         </CardContent>
       </Card>
