@@ -109,20 +109,44 @@ export default function AdminPanel() {
   const saveEdit = async () => {
     if (!editingId || !editState) return;
     setSaving(true);
-    const { error } = await supabase.from('profiles').update({
-      full_name: editState.full_name,
-      rank: editState.rank,
-      is_admin: editState.is_admin,
-    }).eq('id', editingId);
-    setSaving(false);
-    if (error) {
-      toast({ title: 'Error saving', description: error.message, variant: 'destructive' });
-    } else {
-      toast({ title: 'User updated' });
-      setEditingId(null);
-      setEditState(null);
-      fetchUsers();
+
+    // Update name and rank via profiles table (RLS allows admins to update)
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        full_name: editState.full_name.trim(),
+        rank: editState.rank,
+      })
+      .eq('id', editingId);
+
+    if (profileError) {
+      toast({ title: 'Error saving profile', description: profileError.message, variant: 'destructive' });
+      setSaving(false);
+      return;
     }
+
+    // Update is_admin via RPC (bypasses RLS restriction on updating own/others' admin flag)
+    const { error: adminError } = await supabase.rpc('set_user_admin', {
+      target_user_id: editingId,
+      admin_value: editState.is_admin,
+    });
+
+    if (adminError) {
+      // Fallback: try direct update (works if RLS policy allows it)
+      const { error: fallback } = await supabase
+        .from('profiles')
+        .update({ is_admin: editState.is_admin })
+        .eq('id', editingId);
+      if (fallback) {
+        toast({ title: 'Saved profile, but could not update admin status', description: 'Run the SQL migration to enable admin assignment.', variant: 'destructive' });
+      }
+    }
+
+    setSaving(false);
+    toast({ title: 'User updated ✓' });
+    setEditingId(null);
+    setEditState(null);
+    fetchUsers();
   };
 
   const confirmDelete = async () => {
