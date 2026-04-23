@@ -254,14 +254,16 @@ export default function Schedule() {
               const isHoliday   = !!holidayOnDay(d);
               const hasPersonal = dayEvts.some(e => e.source === 'personal');
               const hasTeam     = dayEvts.some(e => e.source === 'team');
-              // Build ring segments: holiday=red, team=blue-500, personal=purple
+              // Build ring segments: holiday=red, team=green-500, personal=purple
               const segments: string[] = [];
               if (isHoliday)   segments.push('#f87171');   // red-400
-              if (hasTeam)     segments.push('#3b82f6');   // blue-500
+              if (hasTeam)     segments.push('#22c55e');   // green-500
               if (hasPersonal) segments.push('#a855f7');   // purple-500
+              // Show ring always when there are segments (even on today — overlays the today ring)
               const showRing = segments.length > 0 && !isSelected;
-              // SVG ring: circle r=17, circumference≈106.8, split evenly with 2px gap
-              const r = 17, circ = 2 * Math.PI * r;
+              // SVG ring: r=16 for event ring, r=17 for today ring so they sit at different radii
+              const rEvent = 16, circ = 2 * Math.PI * rEvent;
+              const rToday = 17;
               const gap = 2;
               const n = segments.length;
               const segLen = (circ - n * gap) / n;
@@ -272,9 +274,11 @@ export default function Schedule() {
                     ${todayMark && !isSelected ? 'text-primary font-semibold' : ''}
                     ${isHoliday && !isSelected && !todayMark ? 'text-red-500' : ''}
                     ${!isSelected && !todayMark && !isHoliday ? 'hover:bg-muted text-foreground' : ''}`}>
-                  {/* Today solid ring behind content */}
+                  {/* Today ring — drawn via SVG so event rings can overlap at different radius */}
                   {todayMark && !isSelected && (
-                    <span className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none" />
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 36 36">
+                      <circle cx="18" cy="18" r={rToday} fill="none" stroke="hsl(var(--primary))" strokeWidth="2" />
+                    </svg>
                   )}
                   {showRing && (
                     <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
@@ -282,7 +286,7 @@ export default function Schedule() {
                         const offset = si * (segLen + gap);
                         return (
                           <circle key={si}
-                            cx="18" cy="18" r={r}
+                            cx="18" cy="18" r={rEvent}
                             fill="none"
                             stroke={color}
                             strokeWidth="2.5"
@@ -303,7 +307,7 @@ export default function Schedule() {
           {/* Legend */}
           <div className="flex items-center gap-3 mt-3 pt-2 border-t justify-center flex-wrap">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" /> Holiday</div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-blue-500 inline-block" /> Team</div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-green-500 inline-block" /> Team</div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-purple-500 inline-block" /> Personal</div>
           </div>
         </CardContent>
