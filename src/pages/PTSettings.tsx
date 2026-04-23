@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Settings, Palette, Bell, Globe, KeyRound, CheckCircle,
-  Moon, Sun, Mail, Smartphone, Loader2, Info,
+  Moon, Sun, Smartphone, Loader2, Info,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -44,21 +44,17 @@ export function initDarkMode() {
 }
 
 interface UserSettings {
-  dark_mode:            boolean;
-  units:                string;
-  language:             string;
-  push_enabled:         boolean;
-  email_notifications:  boolean;
-  notification_email:   string | null;
+  dark_mode:   boolean;
+  units:       string;
+  language:    string;
+  push_enabled: boolean;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
-  dark_mode:           false,
-  units:               'metric',
-  language:            'en',
-  push_enabled:        false,
-  email_notifications: false,
-  notification_email:  null,
+  dark_mode:    false,
+  units:        'metric',
+  language:     'en',
+  push_enabled: false,
 };
 
 export default function PTSettings() {
@@ -69,10 +65,9 @@ export default function PTSettings() {
   const secretUnlocked = (location.state as any)?.secretUnlocked === true;
   const isAlreadyAdmin = (profile as any)?.is_admin === true;
 
-  const [settings, setSettings]     = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [notifEmail, setNotifEmail] = useState('');
-  const [loading, setLoading]       = useState(true);
-  const [saving, setSaving]         = useState(false);
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
 
   const [pushSupported,  setPushSupported]  = useState(false);
   const [pushPermission, setPushPermission] = useState<NotificationPermission>('default');
@@ -92,15 +87,12 @@ export default function PTSettings() {
       .single();
     if (data) {
       const s: UserSettings = {
-        dark_mode:           data.dark_mode           ?? false,
-        units:               data.units               ?? 'metric',
-        language:            data.language            ?? 'en',
-        push_enabled:        data.push_enabled        ?? false,
-        email_notifications: data.email_notifications ?? false,
-        notification_email:  data.notification_email  ?? null,
+        dark_mode:    data.dark_mode    ?? false,
+        units:        data.units        ?? 'metric',
+        language:     data.language     ?? 'en',
+        push_enabled: data.push_enabled ?? false,
       };
       setSettings(s);
-      setNotifEmail(data.notification_email ?? '');
       applyDarkMode(s.dark_mode);
     } else {
       const savedDark = localStorage.getItem('pt-dark-mode') === '1';
@@ -121,13 +113,11 @@ export default function PTSettings() {
     if (!user) return;
     setSaving(true);
     const { error } = await supabase.from('user_settings').upsert({
-      user_id:             user.id,
-      dark_mode:           settings.dark_mode,
-      units:               settings.units,
-      language:            settings.language,
-      push_enabled:        settings.push_enabled,
-      email_notifications: settings.email_notifications,
-      notification_email:  notifEmail.trim() || null,
+      user_id:      user.id,
+      dark_mode:    settings.dark_mode,
+      units:        settings.units,
+      language:     settings.language,
+      push_enabled: settings.push_enabled,
     }, { onConflict: 'user_id' });
     setSaving(false);
     if (error) {
@@ -191,21 +181,6 @@ export default function PTSettings() {
       });
       if (error) throw error;
       toast({ title: 'Test sent!' });
-    } catch (e: any) {
-      toast({ title: 'Test failed', description: e.message, variant: 'destructive' });
-    }
-    setPushLoading(false);
-  };
-
-  const handleTestEmail = async () => {
-    if (!user) return;
-    setPushLoading(true);
-    try {
-      const { error } = await supabase.functions.invoke('send-notifications', {
-        body: { user_id: user.id, title: '🗓️ Test Email Reminder', body: 'Email reminders from PT App are working!', url: '/schedule', channels: ['email'] },
-      });
-      if (error) throw error;
-      toast({ title: 'Test email sent!' });
     } catch (e: any) {
       toast({ title: 'Test failed', description: e.message, variant: 'destructive' });
     }
@@ -370,59 +345,6 @@ export default function PTSettings() {
                 : <Bell className="h-3.5 w-3.5 mr-1.5" />}
               Send Test Push
             </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Email Reminders */}
-      <Card className="border-border bg-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base font-semibold text-card-foreground">
-            <Mail className="h-4 w-4 text-primary" /> Email Reminders
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div>
-                <Label className="text-sm font-medium cursor-pointer">Important Schedule Reminders</Label>
-                <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 max-w-[220px]">
-                  Email sent at 07:00 for preset events, or immediately if added after 07:00 today
-                </p>
-              </div>
-            </div>
-            <Switch
-              checked={settings.email_notifications}
-              onCheckedChange={v => setSettings(s => ({ ...s, email_notifications: v }))}
-            />
-          </div>
-
-          {settings.email_notifications && (
-            <>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Notification Email</Label>
-                <Input
-                  type="email"
-                  placeholder={user?.email ?? 'your@email.com'}
-                  value={notifEmail}
-                  onChange={e => setNotifEmail(e.target.value)}
-                  className="bg-background text-sm"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Leave blank to use account email{user?.email ? ` (${user.email})` : ''}
-                </p>
-              </div>
-
-              <Button variant="outline" size="sm" className="w-full text-xs h-8" onClick={handleTestEmail} disabled={pushLoading}>
-                {pushLoading
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                  : <Mail className="h-3.5 w-3.5 mr-1.5" />}
-                Send Test Email
-              </Button>
-            </>
           )}
         </CardContent>
       </Card>
