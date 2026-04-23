@@ -111,7 +111,7 @@ function NumInput({
   return (
     <input
       type="number"
-      inputMode="numeric"
+      inputMode="decimal"
       min={min} max={max} step={step}
       value={raw}
       onChange={e => {
@@ -597,17 +597,17 @@ export default function Calculators() {
               </div>
               <div className="space-y-2">
                 <Label>Age</Label>
-                <Input type="number" placeholder="25" value={calAge} onChange={e=>setCalAge(e.target.value)}/>
+                <Input type="number" inputMode="decimal" style={{ fontSize: '16px' }} placeholder="25" value={calAge} onChange={e=>setCalAge(e.target.value)}/>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Height (cm)</Label>
-                <Input type="number" placeholder="175" value={calHeight} onChange={e=>setCalHeight(e.target.value)}/>
+                <Input type="number" inputMode="decimal" style={{ fontSize: '16px' }} placeholder="175" value={calHeight} onChange={e=>setCalHeight(e.target.value)}/>
               </div>
               <div className="space-y-2">
                 <Label>Weight (kg)</Label>
-                <Input type="number" placeholder="70" value={calWeight} onChange={e=>setCalWeight(e.target.value)}/>
+                <Input type="number" inputMode="decimal" style={{ fontSize: '16px' }} placeholder="70" value={calWeight} onChange={e=>setCalWeight(e.target.value)}/>
               </div>
             </div>
             <div className="space-y-2">
