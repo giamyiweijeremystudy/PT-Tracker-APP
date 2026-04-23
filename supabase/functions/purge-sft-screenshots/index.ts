@@ -1,17 +1,16 @@
 /**
  * purge-sft-screenshots — Supabase Edge Function (cron)
+ * Deletes SFT screenshots older than 21 days from storage and clears DB field.
+ * sft_screenshot_url stores the storage PATH (not a full URL).
  *
- * Deletes SFT screenshot files and clears the URL from team_submissions
- * for any submission older than 21 days.
- *
- * Schedule (Supabase Dashboard → Edge Functions → Schedule, or SQL Editor):
- *   select cron.schedule('purge-sft-screenshots', '0 1 * * *', $$
- *     select net.http_post(
- *       url := current_setting('app.supabase_url') || '/functions/v1/purge-sft-screenshots',
- *       headers := jsonb_build_object('Authorization','Bearer ' || current_setting('app.service_role_key'),'Content-Type','application/json'),
- *       body := '{}'::jsonb
- *     )
- *   $$);
+ * Schedule: daily at 01:00 UTC
+ * select cron.schedule('purge-sft-screenshots', '0 1 * * *', $$
+ *   select net.http_post(
+ *     url := current_setting('app.supabase_url') || '/functions/v1/purge-sft-screenshots',
+ *     headers := jsonb_build_object('Authorization','Bearer ' || current_setting('app.service_role_key'),'Content-Type','application/json'),
+ *     body := '{}'::jsonb
+ *   )
+ * $$);
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -31,7 +30,6 @@ serve(async (req) => {
   );
 
   try {
-    // Find all submissions with screenshots older than 21 days
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 21);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
@@ -49,22 +47,11 @@ serve(async (req) => {
       });
     }
 
-    // Extract storage paths from URLs
-    // URL format: .../storage/v1/object/sign/sft-screenshots/PATH
+    // sft_screenshot_url is now a storage path like "user_id/submission_id.jpg"
     const storagePaths = stale
-      .map((s: any) => {
-        try {
-          const url = new URL(s.sft_screenshot_url);
-          // path is everything after /sft-screenshots/
-          const match = url.pathname.match(/\/sft-screenshots\/(.+)/);
-          return match ? match[1] : null;
-        } catch {
-          return null;
-        }
-      })
+      .map((s: any) => s.sft_screenshot_url)
       .filter(Boolean) as string[];
 
-    // Delete files from storage
     if (storagePaths.length > 0) {
       const { error: storageErr } = await supabase.storage
         .from("sft-screenshots")
@@ -72,7 +59,6 @@ serve(async (req) => {
       if (storageErr) console.error("Storage delete error:", storageErr);
     }
 
-    // Clear URL from submissions
     const ids = stale.map((s: any) => s.id);
     const { error: updateErr } = await supabase
       .from("team_submissions")
@@ -80,8 +66,6 @@ serve(async (req) => {
       .in("id", ids);
 
     if (updateErr) throw updateErr;
-
-    console.log(`Purged ${stale.length} screenshots older than ${cutoffStr}`);
 
     return new Response(JSON.stringify({ ok: true, purged: stale.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
