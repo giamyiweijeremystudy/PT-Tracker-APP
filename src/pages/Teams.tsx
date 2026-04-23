@@ -504,6 +504,8 @@ export default function Teams() {
   const [screenshotPopupOpen, setScreenshotPopupOpen] = useState(false);
   const [subScreenshotFile, setSubScreenshotFile] = useState<File | null>(null);
   const [subScreenshotUploading, setSubScreenshotUploading] = useState(false);
+  const [editSubScreenshotFile, setEditSubScreenshotFile] = useState<File | null>(null);
+  const [editSubScreenshotPreview, setEditSubScreenshotPreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const handleCreate = async () => {
@@ -964,7 +966,19 @@ export default function Teams() {
   const handleEditSubmission = async (id: string) => {
     if (!team || !user) return;
     setSubmitting(true);
-    const { error } = await supabase.from('team_submissions').update({
+    // Handle screenshot: upload new file, keep existing preview URL, or null if cleared
+    let screenshotUrl: string | null | undefined = undefined; // undefined = don't change
+    if (editSubScreenshotFile) {
+      setSubScreenshotUploading(true);
+      const uploaded = await uploadScreenshot(editSubScreenshotFile, id);
+      setSubScreenshotUploading(false);
+      setEditSubScreenshotFile(null);
+      screenshotUrl = uploaded;
+    } else if (editSubScreenshotPreview === null) {
+      // User explicitly cleared the screenshot
+      screenshotUrl = null;
+    }
+    const updatePayload: Record<string, any> = {
       session_type: subType,
       attendance_status: subAttendance,
       sft_type: subType === 'SFT' ? sftType : null,
@@ -972,12 +986,15 @@ export default function Teams() {
       sft_kind: subType === 'SFT' ? sftKind : null,
       temperature: subTemp ? parseFloat(subTemp) : null,
       notes: subNotes,
-    }).eq('id', id);
+    };
+    if (screenshotUrl !== undefined) updatePayload.sft_screenshot_url = screenshotUrl;
+    const { error } = await supabase.from('team_submissions').update(updatePayload).eq('id', id);
     setSubmitting(false);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     toast({ title: 'Submission updated!' });
     setEditingSubId(null);
     setSubTemp(''); setSubNotes(''); setSftCustom(''); setSftKind('in_camp');
+    setEditSubScreenshotFile(null); setEditSubScreenshotPreview(null);
     fetchSubmissions();
     fetchAllSubmissions();
   };
@@ -1849,7 +1866,7 @@ export default function Teams() {
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold">{fmtDate(s.submission_date, { year: true })}</span>
-                          <button onClick={() => { setEditingSubId(null); setSubTemp(''); setSubNotes(''); setSftCustom(''); }}
+                          <button onClick={() => { setEditingSubId(null); setSubTemp(''); setSubNotes(''); setSftCustom(''); setEditSubScreenshotFile(null); setEditSubScreenshotPreview(null); }}
                             className="p-1 rounded hover:bg-muted text-muted-foreground">
                             <XIcon className="h-3.5 w-3.5" />
                           </button>
@@ -1878,20 +1895,54 @@ export default function Teams() {
                             <SelectContent>{SFT_TYPES.map(t2 => <SelectItem key={t2} value={t2} className="text-xs">{t2}</SelectItem>)}</SelectContent>
                           </Select>
                         )}
-                        <div className="grid grid-cols-2 gap-2">
-                          {ATTENDANCE_STATUSES.map(st => (
-                            <button key={st} onClick={() => setSubAttendance(st)}
-                              className={`py-1.5 px-2 rounded-lg border text-xs font-medium transition-colors text-left ${subAttendance === st ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
-                              {st === 'Participating' && '✅ '}{st === 'Light Duty' && '⚠️ '}{st === 'MC' && '🏥 '}{st === 'On Leave' && '🏖️ '}
-                              {st}
-                            </button>
-                          ))}
-                        </div>
+                        {!(subType === 'SFT' && sftKind === 'personal') && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {ATTENDANCE_STATUSES.map(st => (
+                              <button key={st} onClick={() => setSubAttendance(st)}
+                                className={`py-1.5 px-2 rounded-lg border text-xs font-medium transition-colors text-left ${subAttendance === st ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
+                                {st === 'Participating' && '✅ '}{st === 'Light Duty' && '⚠️ '}{st === 'MC' && '🏥 '}{st === 'On Leave' && '🏖️ '}
+                                {st}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <Input type="number" step="0.1" min="35" max="42" placeholder="Temp °C (optional)" value={subTemp} onChange={e => setSubTemp(e.target.value)} className="h-8 text-xs" />
                         <Input placeholder="Notes (optional)" value={subNotes} onChange={e => setSubNotes(e.target.value)} className="h-8 text-xs" />
+                        {/* Screenshot edit — SFT only */}
+                        {subType === 'SFT' && (
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1"><Camera className="h-3 w-3" /> Screenshot</p>
+                            {editSubScreenshotPreview ? (
+                              <div className="relative rounded-lg overflow-hidden border">
+                                <img src={editSubScreenshotPreview} alt="screenshot preview" className="w-full h-24 object-cover" />
+                                <button
+                                  onClick={() => { setEditSubScreenshotPreview(null); setEditSubScreenshotFile(null); }}
+                                  className="absolute top-1 right-1 bg-black/60 rounded-full p-0.5 text-white hover:bg-black/80"
+                                >
+                                  <XIcon className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="cursor-pointer block">
+                                <div className={`flex items-center gap-2 rounded-lg border border-dashed px-2 py-2 text-xs transition-colors hover:bg-muted ${editSubScreenshotFile ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                                  <ImageIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                  <span className={`truncate ${editSubScreenshotFile ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                                    {editSubScreenshotFile ? editSubScreenshotFile.name : 'Tap to attach screenshot...'}
+                                  </span>
+                                </div>
+                                <input type="file" accept="image/*" className="hidden"
+                                  onChange={e => {
+                                    const f = e.target.files?.[0];
+                                    if (f) { setEditSubScreenshotFile(f); setEditSubScreenshotPreview(URL.createObjectURL(f)); }
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        )}
                         <div className="flex gap-2">
-                          <Button size="sm" className="flex-1 h-8 text-xs" onClick={() => handleEditSubmission(s.id)} disabled={submitting}>
-                            {submitting ? 'Saving...' : 'Save Changes'}
+                          <Button size="sm" className="flex-1 h-8 text-xs" onClick={() => handleEditSubmission(s.id)} disabled={submitting || subScreenshotUploading}>
+                            {subScreenshotUploading ? 'Uploading...' : submitting ? 'Saving...' : 'Save Changes'}
                           </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -1943,6 +1994,8 @@ export default function Teams() {
                               setSftKind((s.sft_kind as 'in_camp'|'personal') ?? 'in_camp');
                               setSubTemp(s.temperature ? String(s.temperature) : '');
                               setSubNotes(s.notes ?? '');
+                              setEditSubScreenshotPreview(s.sft_screenshot_url ?? null);
+                              setEditSubScreenshotFile(null);
                             }}
                             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                             title="Edit submission"
@@ -2275,31 +2328,62 @@ export default function Teams() {
                   {Array.from({ length: daysInMonth }).map((_, i) => {
                     const d = i + 1;
                     const isSelected = selectedDay === d;
-                    const todayMark = isToday(d);
-                    const hasEvents = eventsOnDay(d).length > 0;
-                    const isHoliday = !!holidayOnDay(d);
+                    const todayMark  = isToday(d);
+                    const dayEvts    = eventsOnDay(d);
+                    const isHoliday  = !!holidayOnDay(d);
+                    const hasPT      = dayEvts.some(e => e.event_type === 'PT');
+                    const hasSFT     = dayEvts.some(e => e.event_type === 'SFT');
+                    const hasOther   = dayEvts.some(e => e.event_type === 'Other');
+                    // Segments: holiday=red, PT=blue, SFT=green, Other=amber
+                    const segments: string[] = [];
+                    if (isHoliday) segments.push('#f87171');
+                    if (hasPT)     segments.push('#3b82f6');
+                    if (hasSFT)    segments.push('#22c55e');
+                    if (hasOther)  segments.push('#f59e0b');
+                    const showRing = segments.length > 0 && !isSelected;
+                    const r = 17, circ = 2 * Math.PI * r;
+                    const gap = 2;
+                    const n = segments.length;
+                    const segLen = (circ - n * gap) / n;
                     return (
                       <button key={d} onClick={() => setSelectedDay(isSelected ? null : d)}
-                        className={`relative mx-auto flex flex-col h-9 w-9 items-center justify-center rounded-full text-sm transition-colors
+                        className={`relative mx-auto flex items-center justify-center h-9 w-9 text-sm transition-colors rounded-full
                           ${isSelected ? 'bg-primary text-primary-foreground font-semibold' : ''}
-                          ${todayMark && !isSelected ? 'border border-primary text-primary font-semibold' : ''}
+                          ${todayMark && !isSelected ? 'text-primary font-semibold' : ''}
                           ${isHoliday && !isSelected && !todayMark ? 'text-red-500' : ''}
                           ${!isSelected && !todayMark && !isHoliday ? 'hover:bg-muted text-foreground' : ''}`}>
-                        {d}
-                        {(hasEvents || isHoliday) && !isSelected && (
-                          <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5`}>
-                            {isHoliday && <span className="h-1 w-1 rounded-full bg-red-400" />}
-                            {hasEvents && <span className="h-1 w-1 rounded-full bg-primary" />}
-                          </span>
+                        {todayMark && !isSelected && (
+                          <span className="absolute inset-0 rounded-full border-2 border-primary pointer-events-none" />
                         )}
+                        {showRing && (
+                          <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
+                            {segments.map((color, si) => {
+                              const offset = si * (segLen + gap);
+                              return (
+                                <circle key={si}
+                                  cx="18" cy="18" r={r}
+                                  fill="none"
+                                  stroke={color}
+                                  strokeWidth="2.5"
+                                  strokeDasharray={`${segLen} ${circ - segLen}`}
+                                  strokeDashoffset={-offset}
+                                  strokeLinecap="round"
+                                />
+                              );
+                            })}
+                          </svg>
+                        )}
+                        {d}
                       </button>
                     );
                   })}
                 </div>
                 {/* Legend */}
-                <div className="flex items-center gap-4 mt-3 pt-2 border-t justify-center">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" /> Public Holiday</div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-primary inline-block" /> Team Event</div>
+                <div className="flex items-center gap-2 mt-3 pt-2 border-t justify-center flex-wrap">
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-red-400 inline-block" /> Holiday</div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-blue-500 inline-block" /> PT</div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-green-500 inline-block" /> SFT</div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-amber-500 inline-block" /> Other</div>
                 </div>
               </CardContent>
             </Card>
