@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Send, ArrowRight, Loader2, X, Wifi, WifiOff, Sparkles } from 'lucide-react';
-import { SUGGESTIONS } from '@/lib/chatIntents';
+import { SUGGESTIONS, FAQ_PRESETS, type FaqPreset } from '@/lib/chatIntents';
 import { dynamicSearch, fetchFullAppContext } from '@/lib/chatDataFetcher';
 import { callGemini, buildSystemPrompt } from '@/lib/geminiClient';
 import { loadHistory, saveHistory, clearHistory, type StoredMessage } from '@/lib/chatStorage';
@@ -57,6 +57,8 @@ export default function Chat() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [geminiKey, setGeminiKey] = useState<string>('');
   const [debugStatus, setDebugStatus] = useState<string>('loading...');
+  const [showFaq, setShowFaq] = useState(false);
+  const [faqCategory, setFaqCategory] = useState<string>('all');
 
   // Cached app context — refreshed once per session
   const appContextRef = useRef<string>('');
@@ -124,6 +126,14 @@ export default function Chat() {
 
     const userMsg: UserMessage = { role: 'user', text, timestamp: Date.now() };
     addMessage(userMsg);
+
+    // Check if this exactly matches a FAQ preset — answer offline, no API call
+    const faqMatch = FAQ_PRESETS.find(f => f.question === text);
+    if (faqMatch) {
+      addMessage({ role: 'bot', text: faqMatch.answer, timestamp: Date.now(), source: 'local' });
+      return;
+    }
+
     setThinking(true);
 
     // Build conversation history for Gemini (exclude welcome message, exclude loading states)
@@ -227,17 +237,61 @@ export default function Chat() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 pr-1">
 
-        {/* Initial suggestions */}
+        {/* Initial suggestions + FAQ */}
         {messages.length === 1 && (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground px-1">Try asking:</p>
-            <div className="flex flex-wrap gap-2">
-              {SUGGESTIONS.map(s => (
-                <button key={s} onClick={() => handleSend(s)}
-                  className="text-xs px-3 py-1.5 rounded-full border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors">
-                  {s}
-                </button>
-              ))}
+          <div className="space-y-4">
+            {/* Quick suggestions */}
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground px-1">Try asking:</p>
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTIONS.map(s => (
+                  <button key={s} onClick={() => handleSend(s)}
+                    className="text-xs px-3 py-1.5 rounded-full border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors">
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* FAQ section */}
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <button
+                onClick={() => setShowFaq(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <span>💡</span> Commonly Asked Questions
+                  <span className="text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">offline · free</span>
+                </span>
+                <span className="text-muted-foreground text-xs">{showFaq ? '▲' : '▼'}</span>
+              </button>
+
+              {showFaq && (
+                <div className="border-t">
+                  {/* Category filter */}
+                  <div className="flex gap-2 px-4 py-2.5 overflow-x-auto scrollbar-hide border-b">
+                    {(['all', 'ippt', 'bmi', 'training', 'app'] as const).map(cat => (
+                      <button key={cat} onClick={() => setFaqCategory(cat)}
+                        className={`text-xs px-3 py-1 rounded-full whitespace-nowrap transition-colors shrink-0 ${faqCategory === cat ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>
+                        {cat === 'all' ? 'All' : cat === 'ippt' ? 'IPPT' : cat === 'bmi' ? 'BMI' : cat === 'training' ? 'Training' : 'App Help'}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Questions */}
+                  <div className="divide-y">
+                    {FAQ_PRESETS
+                      .filter(f => faqCategory === 'all' || f.category === faqCategory)
+                      .map(f => (
+                        <button key={f.id} onClick={() => { handleSend(f.question); setShowFaq(false); }}
+                          className="w-full text-left px-4 py-3 text-sm text-foreground hover:bg-muted/50 transition-colors flex items-center justify-between gap-2">
+                          <span>{f.question}</span>
+                          <span className="text-muted-foreground shrink-0">›</span>
+                        </button>
+                      ))
+                    }
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
