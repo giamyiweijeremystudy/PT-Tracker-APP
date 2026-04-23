@@ -1651,7 +1651,11 @@ export default function Teams() {
         // For popup: build state string for a given date
         const STATUS_ORDER_TEXT: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3 };
         const buildStateText = (date: string) => {
-          const daySubmissions = allSubmissions.filter(s => s.submission_date === date);
+          // Exclude personal SFT — they are logging only, not attendance
+          const daySubmissions = allSubmissions.filter(s =>
+            s.submission_date === date &&
+            !(s.session_type === 'SFT' && s.sft_kind === 'personal')
+          );
           const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
           return formatParadeState(daySubmissions, notSub, date, team?.name ?? 'Team');
         };
@@ -2013,9 +2017,11 @@ export default function Teams() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setSubmissionPopupOpen(true)}>
-                        <FileText className="h-3 w-3 mr-1" /> Attendance
-                      </Button>
+                      {teamSftView === 'in_camp' && (
+                        <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setSubmissionPopupOpen(true)}>
+                          <FileText className="h-3 w-3 mr-1" /> Attendance
+                        </Button>
+                      )}
                     </div>
                   </div>
 
