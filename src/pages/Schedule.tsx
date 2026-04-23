@@ -274,15 +274,17 @@ export default function Schedule() {
                     ${todayMark && !isSelected ? 'text-primary font-semibold' : ''}
                     ${isHoliday && !isSelected && !todayMark ? 'text-red-500' : ''}
                     ${!isSelected && !todayMark && !isHoliday ? 'hover:bg-muted text-foreground' : ''}`}>
-                  {/* Today indicator — solid ring drawn inside the button */}
-                  {todayMark && !isSelected && (
-                    <span className="absolute rounded-full border-2 border-primary pointer-events-none"
-                      style={{ inset: showRing ? '3px' : '0' }} />
-                  )}
-                  {/* Event rings — drawn outside, always on top */}
+                  {/* Event rings — sit outside with a 2px gap from the filled circle.
+                      The gap is created by a background-coloured "mask" ring just inside the arc. */}
                   {showRing && (
                     <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
                       viewBox="0 0 40 40" style={{ transform: 'rotate(-90deg)' }}>
+                      {/* Gap ring: same-background stroke slightly inside the arc radius */}
+                      <circle cx="20" cy="20" r={rRing - 1.5}
+                        fill="none"
+                        stroke="hsl(var(--background))"
+                        strokeWidth="3"
+                      />
                       {segments.map((color, si) => {
                         const offset = si * (segLen + gap);
                         return (
