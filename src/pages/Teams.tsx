@@ -500,6 +500,7 @@ export default function Teams() {
 
   const [submissionPopupOpen, setSubmissionPopupOpen] = useState(false);
   const [submissionPopupDate, setSubmissionPopupDate] = useState(localDateStr(today));
+  const [teamSftView, setTeamSftView] = useState<'in_camp'|'personal'>('in_camp');
   const [screenshotPopupOpen, setScreenshotPopupOpen] = useState(false);
   const [subScreenshotFile, setSubScreenshotFile] = useState<File | null>(null);
   const [subScreenshotUploading, setSubScreenshotUploading] = useState(false);
@@ -906,6 +907,12 @@ export default function Teams() {
 
   const handleSubmission = async () => {
     if (!team || !user) return;
+    // Block future-date SFT submissions (GMT+8)
+    const todayGmt8 = localDateStr();
+    if (subType === 'SFT' && subDate > todayGmt8) {
+      toast({ title: 'Cannot submit future SFT', description: 'SFT submissions are only allowed for today or past dates.', variant: 'destructive' });
+      return;
+    }
     // PT: block duplicate on same date. SFT: allow multiple per day.
     if (subType === 'PT') {
       const { data: existing } = await supabase
@@ -1678,8 +1685,12 @@ export default function Teams() {
                   <Input
                     type="date"
                     value={subDate}
+                    max={localDateStr()}
                     onChange={e => {
-                      setSubDate(e.target.value);
+                      // GMT+8: clamp to today
+                      const selected = e.target.value;
+                      const todayGmt8 = localDateStr();
+                      setSubDate(selected > todayGmt8 ? todayGmt8 : selected);
                       setSubEventId('none');
                     }}
                     className="w-full appearance-none"
@@ -1807,7 +1818,7 @@ export default function Teams() {
                         </button>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">Screenshot will be automatically deleted after 21 days.</p>
+                    <p className="text-xs text-muted-foreground">Screenshot will be automatically deleted after 27 days.</p>
                   </div>
                 )}
 
@@ -1944,13 +1955,22 @@ export default function Teams() {
               const daySubmissions = allSubmissions.filter(s => s.submission_date === viewDate);
               const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
 
-              // Sort order: Participating → Light Duty → MC → On Leave, then alpha
               const STATUS_ORDER: Record<string, number> = {
                 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3,
               };
               const getName = (s: typeof daySubmissions[0]) =>
                 s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ' : ''}${s.profile.full_name}` : 'Member';
-              const sortedSubmissions = [...daySubmissions].sort((a, b) => {
+
+              // In Camp: one submission per member (PT or in_camp SFT)
+              // Personal SFT: all personal sft rows across all members, sorted by created_at
+              const inCampSubs = daySubmissions.filter(s =>
+                s.session_type === 'PT' || (s.session_type === 'SFT' && (!s.sft_kind || s.sft_kind === 'in_camp'))
+              );
+              const personalSftSubs = [...allSubmissions.filter(s =>
+                s.submission_date === viewDate && s.session_type === 'SFT' && s.sft_kind === 'personal'
+              )].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+              const sortedInCamp = [...inCampSubs].sort((a, b) => {
                 const od = (STATUS_ORDER[a.attendance_status] ?? 99) - (STATUS_ORDER[b.attendance_status] ?? 99);
                 if (od !== 0) return od;
                 return getName(a).localeCompare(getName(b));
@@ -1961,8 +1981,18 @@ export default function Teams() {
                 return na.localeCompare(nb);
               });
 
+              // 27-day expiry helper (GMT+8 aware via localDateStr)
+              const daysLeftForSub = (sub: any) => {
+                const [sy, sm, sd] = sub.submission_date.split('-').map(Number);
+                const subMs = new Date(sy, sm - 1, sd).getTime();
+                const [ty, tm, td] = localDateStr().split('-').map(Number);
+                const todayMs = new Date(ty, tm - 1, td).getTime();
+                return Math.max(0, 27 - Math.floor((todayMs - subMs) / (1000 * 60 * 60 * 24)));
+              };
+
               return (
                 <div className="space-y-3 pt-2 border-t mt-2">
+                  {/* Header row */}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                       <Users2 className="h-3.5 w-3.5" /> All Team Submissions
@@ -1978,99 +2008,172 @@ export default function Teams() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <div className="flex gap-1.5">
-                        <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setSubmissionPopupOpen(true)}>
-                          <FileText className="h-3 w-3 mr-1" /> Attendance
-                        </Button>
-                        {canManage && (
-                          <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setScreenshotPopupOpen(true)}>
-                            <Camera className="h-3 w-3 mr-1" /> Screenshots
-                          </Button>
-                        )}
-                      </div>
+                      <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setSubmissionPopupOpen(true)}>
+                        <FileText className="h-3 w-3 mr-1" /> Attendance
+                      </Button>
                     </div>
                   </div>
 
-                  <p className="text-xs text-muted-foreground">{daySubmissions.length} of {members.length} submitted</p>
+                  {/* In Camp / Personal SFT toggle */}
+                  <div className="flex rounded-lg border overflow-hidden">
+                    {(['in_camp', 'personal'] as const).map(k => (
+                      <button key={k} onClick={() => setTeamSftView(k)}
+                        className={`flex-1 py-2 text-xs font-semibold transition-colors ${teamSftView === k ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
+                        {k === 'in_camp' ? `🏕️ In Camp (${inCampSubs.length})` : `🏃 Personal SFT (${personalSftSubs.length})`}
+                      </button>
+                    ))}
+                  </div>
 
-                  <div className="rounded-xl border bg-card overflow-hidden divide-y">
-                    <div className="px-3 py-2 bg-green-50/60 dark:bg-green-900/10">
-                      <p className="text-xs font-semibold text-green-700 dark:text-green-400">
-                        ✅ Submitted ({daySubmissions.length})
-                      </p>
-                    </div>
-                    {sortedSubmissions.length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-muted-foreground italic">No submissions for this date</div>
-                    ) : (
-                      sortedSubmissions.map(s => {
-                        const name = getName(s);
-                        const isFever = s.temperature != null && s.temperature >= 37.5;
-                        return (
-                          <div key={s.id} className="flex items-start justify-between gap-2 px-3 py-2.5">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`text-xs font-medium ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</span>
-                                <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
-                                <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
-                                {isFever && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700">
-                                    fever
-                                  </span>
+                  {/* ── IN CAMP view ── */}
+                  {teamSftView === 'in_camp' && (
+                    <>
+                      <p className="text-xs text-muted-foreground">{inCampSubs.length} of {members.length} submitted</p>
+                      <div className="rounded-xl border bg-card overflow-hidden divide-y">
+                        <div className="px-3 py-2 bg-green-50/60 dark:bg-green-900/10">
+                          <p className="text-xs font-semibold text-green-700 dark:text-green-400">
+                            ✅ Submitted ({inCampSubs.length})
+                          </p>
+                        </div>
+                        {sortedInCamp.length === 0 ? (
+                          <div className="px-3 py-3 text-xs text-muted-foreground italic">No submissions for this date</div>
+                        ) : (
+                          sortedInCamp.map(s => {
+                            const name = getName(s);
+                            const isFever = s.temperature != null && s.temperature >= 37.5;
+                            const dl = daysLeftForSub(s);
+                            const screenshotExpired = dl <= 0;
+                            return (
+                              <div key={s.id} className="flex items-start justify-between gap-2 px-3 py-2.5">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={`text-xs font-medium ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</span>
+                                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted">{s.session_type}</span>
+                                    <span className="text-xs">{statusEmoji[s.attendance_status] ?? ''} {s.attendance_status}</span>
+                                    {isFever && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700">fever</span>
+                                    )}
+                                  </div>
+                                  {s.session_type === 'SFT' && s.sft_type && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>
+                                  )}
+                                  {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
+                                  {/* Screenshot button — in-camp SFT only, canManage */}
+                                  {s.session_type === 'SFT' && canManage && (s.sft_screenshot_url || screenshotExpired) && (
+                                    <button
+                                      onClick={() => {
+                                        if (screenshotExpired || !s.sft_screenshot_url) {
+                                          toast({ title: 'Image expired', description: 'This screenshot has been automatically deleted.' });
+                                        } else {
+                                          setLightboxUrl(s.sft_screenshot_url);
+                                        }
+                                      }}
+                                      className="mt-1 flex items-center gap-1 text-[10px] text-primary hover:underline"
+                                    >
+                                      <Camera className="h-3 w-3" />
+                                      {screenshotExpired ? 'Image expired' : `See screenshot · deletes in ${dl}d`}
+                                    </button>
+                                  )}
+                                </div>
+                                <span className={`text-xs shrink-0 font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                  {s.temperature != null ? `${s.temperature}°C` : '—'}
+                                </span>
+                              </div>
+                            );
+                          })
+                        )}
+                        <div className="px-3 py-2 bg-red-50/60 dark:bg-red-900/10">
+                          <p className="text-xs font-semibold text-red-600 dark:text-red-400">
+                            ❌ Not Submitted ({notSub.length})
+                          </p>
+                        </div>
+                        {sortedNotSub.length === 0 ? (
+                          <div className="px-3 py-3 text-xs text-muted-foreground italic">All members have submitted</div>
+                        ) : (
+                          sortedNotSub.map(m => {
+                            const mp = m.profile;
+                            const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
+                            return (
+                              <div key={m.user_id} className="px-3 py-2.5 flex items-center justify-between gap-2">
+                                <span className="text-xs font-medium text-muted-foreground">{name}</span>
+                                {canManage && (
+                                  <button
+                                    onClick={() => {
+                                      setAdminSubUserId(m.user_id);
+                                      setAdminSubType('PT');
+                                      setAdminSubAttendance('Participating');
+                                      setAdminSubNotes('');
+                                      setAdminSubTemp('');
+                                      setAdminSftType('Running');
+                                      setAdminSftCustom('');
+                                      setShowAdminSubModal(true);
+                                    }}
+                                    className="text-xs text-primary hover:underline shrink-0 flex items-center gap-1"
+                                  >
+                                    <Plus className="h-3 w-3" /> Record
+                                  </button>
                                 )}
                               </div>
-                              {s.session_type === 'SFT' && (
-                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${s.sft_kind === 'personal' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
-                                    {s.sft_kind === 'personal' ? '🏃 Personal' : '🏕️ In Camp'}
-                                  </span>
-                                  {s.sft_type && <p className="text-xs text-muted-foreground">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>}
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── PERSONAL SFT view ── */}
+                  {teamSftView === 'personal' && (
+                    <div className="rounded-xl border bg-card overflow-hidden divide-y">
+                      {personalSftSubs.length === 0 ? (
+                        <div className="px-3 py-6 text-center text-xs text-muted-foreground italic">
+                          No personal SFT logs for this date
+                        </div>
+                      ) : (
+                        personalSftSubs.map((s, idx) => {
+                          const name = getName(s);
+                          const isFever = s.temperature != null && s.temperature >= 37.5;
+                          const dl = daysLeftForSub(s);
+                          const screenshotExpired = dl <= 0;
+                          return (
+                            <div key={s.id} className="flex items-start justify-between gap-2 px-3 py-2.5">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-[10px] text-muted-foreground font-mono shrink-0">#{idx + 1}</span>
+                                  <span className={`text-xs font-medium ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-medium">🏃 Personal</span>
+                                  {isFever && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700">fever</span>
+                                  )}
                                 </div>
-                              )}
-                              {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
+                                {s.sft_type && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{s.sft_type}{s.sft_custom ? ` - ${s.sft_custom}` : ''}</p>
+                                )}
+                                {s.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{s.notes}</p>}
+                                {/* Screenshot button — personal SFT */}
+                                {(s.sft_screenshot_url || screenshotExpired) && (
+                                  <button
+                                    onClick={() => {
+                                      if (screenshotExpired || !s.sft_screenshot_url) {
+                                        toast({ title: 'Image expired', description: 'This screenshot has been automatically deleted.' });
+                                      } else {
+                                        setLightboxUrl(s.sft_screenshot_url);
+                                      }
+                                    }}
+                                    className="mt-1 flex items-center gap-1 text-[10px] text-primary hover:underline"
+                                  >
+                                    <Camera className="h-3 w-3" />
+                                    {screenshotExpired ? 'Image expired' : `See screenshot · deletes in ${dl}d`}
+                                  </button>
+                                )}
+                              </div>
+                              <span className={`text-xs shrink-0 font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                {s.temperature != null ? `${s.temperature}°C` : '—'}
+                              </span>
                             </div>
-                            <span className={`text-xs shrink-0 font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                              {s.temperature != null ? `${s.temperature}°C` : '—'}
-                            </span>
-                          </div>
-                        );
-                      })
-                    )}
-                    <div className="px-3 py-2 bg-red-50/60 dark:bg-red-900/10">
-                      <p className="text-xs font-semibold text-red-600 dark:text-red-400">
-                        ❌ Not Submitted ({notSub.length})
-                      </p>
+                          );
+                        })
+                      )}
                     </div>
-                    {sortedNotSub.length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-muted-foreground italic">All members have submitted</div>
-                    ) : (
-                      sortedNotSub.map(m => {
-                        const mp = m.profile;
-                        const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
-                        return (
-                          <div key={m.user_id} className="px-3 py-2.5 flex items-center justify-between gap-2">
-                            <span className="text-xs font-medium text-muted-foreground">{name}</span>
-                            {canManage && (
-                              <button
-                                onClick={() => {
-                                  setAdminSubUserId(m.user_id);
-                                  setAdminSubType('PT');
-                                  setAdminSubAttendance('Participating');
-                                  setAdminSubNotes('');
-                                  setAdminSubTemp('');
-                                  setAdminSftType('Running');
-                                  setAdminSftCustom('');
-                                  setShowAdminSubModal(true);
-                                }}
-                                className="text-xs text-primary hover:underline shrink-0 flex items-center gap-1"
-                              >
-                                <Plus className="h-3 w-3" /> Record
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })()}
@@ -2630,72 +2733,6 @@ export default function Teams() {
                 <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => downloadSubmissions('csv', submissionPopupDate)}>
                   <Download className="h-3 w-3 mr-1.5" /> CSV
                 </Button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── SFT Screenshots Popup (PT IC and Admin only) ── */}
-      {screenshotPopupOpen && canManage && (() => {
-        const daySubs = allSubmissions.filter(s =>
-          s.submission_date === submissionPopupDate &&
-          s.session_type === 'SFT' &&
-          s.sft_screenshot_url
-        );
-
-        return (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => setScreenshotPopupOpen(false)}>
-            <div
-              className="w-full max-w-2xl bg-background rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-              style={{ maxHeight: 'min(90dvh, 700px)' }}
-              onClick={e => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b shrink-0">
-                <div>
-                  <h2 className="text-base font-bold flex items-center gap-2">
-                    <Camera className="h-4 w-4 text-primary" /> SFT Screenshots
-                  </h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {fmtDate(submissionPopupDate, { weekday: true })} · PT IC & Admin only · auto-deleted after 21 days
-                  </p>
-                </div>
-                <button onClick={() => setScreenshotPopupOpen(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground ml-3 shrink-0">
-                  <XIcon className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="overflow-y-auto flex-1 p-5">
-                {daySubs.length === 0 ? (
-                  <div className="text-center py-16 text-muted-foreground">
-                    <Camera className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">No screenshots for this date</p>
-                    <p className="text-xs mt-1 opacity-70">Screenshots are only submitted with SFT attendance</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {daySubs.map(s => {
-                      const name = s.profile
-                        ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank + ' ' : ''}${s.profile.full_name}`
-                        : 'Member';
-                      const daysLeft = Math.max(0, 21 - Math.floor(
-                        (Date.now() - new Date(s.submission_date).getTime()) / (1000 * 60 * 60 * 24)
-                      ));
-                      return (
-                        <ScreenshotCard
-                          key={s.id}
-                          name={name}
-                          imageUrl={s.sft_screenshot_url!}
-                          submission={s}
-                          daysLeft={daysLeft}
-                          onExpand={setLightboxUrl}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             </div>
           </div>
