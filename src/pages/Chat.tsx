@@ -370,6 +370,7 @@ export default function Chat() {
             placeholder={aiMode ? "Ask me anything..." : "Ask me anything (offline mode)..."}
             disabled={thinking}
             className="flex-1 rounded-xl border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            style={{ fontSize: '16px' }}
           />
           <Button onClick={() => handleSend()} disabled={!input.trim() || thinking} size="icon" className="rounded-xl h-10 w-10 shrink-0">
             {thinking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
