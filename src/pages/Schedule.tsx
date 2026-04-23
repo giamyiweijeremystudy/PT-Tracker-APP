@@ -256,41 +256,42 @@ export default function Schedule() {
               const hasTeam     = dayEvts.some(e => e.source === 'team');
               // Build ring segments: holiday=red, team=green-500, personal=purple
               const segments: string[] = [];
-              if (isHoliday)   segments.push('#f87171');   // red-400
-              if (hasTeam)     segments.push('#22c55e');   // green-500
-              if (hasPersonal) segments.push('#a855f7');   // purple-500
-              // Show ring always when there are segments (even on today — overlays the today ring)
-              const showRing = segments.length > 0 && !isSelected;
-              // SVG ring: r=16 for event ring, r=17 for today ring so they sit at different radii
-              const rEvent = 16, circ = 2 * Math.PI * rEvent;
-              const rToday = 17;
+              if (isHoliday)   segments.push('#f87171');
+              if (hasTeam)     segments.push('#22c55e');
+              if (hasPersonal) segments.push('#a855f7');
+              // Ring always shows when segments exist — including on selected/today days
+              // Use r=19 so the arc sits OUTSIDE the 18px filled circle (h-9 w-9 = 36px, radius=18)
+              const showRing = segments.length > 0;
+              const rRing = 19, circRing = 2 * Math.PI * rRing;
               const gap = 2;
               const n = segments.length;
-              const segLen = (circ - n * gap) / n;
+              const segLen = (circRing - n * gap) / n;
               return (
                 <button key={d} onClick={() => setSelectedDay(isSelected ? null : d)}
-                  className={`relative mx-auto flex items-center justify-center h-9 w-9 text-sm transition-colors rounded-full
+                  className={`relative mx-auto flex items-center justify-center text-sm transition-colors rounded-full
+                    ${showRing ? 'h-10 w-10' : 'h-9 w-9'}
                     ${isSelected ? 'bg-primary text-primary-foreground font-semibold' : ''}
                     ${todayMark && !isSelected ? 'text-primary font-semibold' : ''}
                     ${isHoliday && !isSelected && !todayMark ? 'text-red-500' : ''}
                     ${!isSelected && !todayMark && !isHoliday ? 'hover:bg-muted text-foreground' : ''}`}>
-                  {/* Today ring — drawn via SVG so event rings can overlap at different radius */}
+                  {/* Today indicator — solid ring drawn inside the button */}
                   {todayMark && !isSelected && (
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 36 36">
-                      <circle cx="18" cy="18" r={rToday} fill="none" stroke="hsl(var(--primary))" strokeWidth="2" />
-                    </svg>
+                    <span className="absolute rounded-full border-2 border-primary pointer-events-none"
+                      style={{ inset: showRing ? '3px' : '0' }} />
                   )}
+                  {/* Event rings — drawn outside, always on top */}
                   {showRing && (
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
+                      viewBox="0 0 40 40" style={{ transform: 'rotate(-90deg)' }}>
                       {segments.map((color, si) => {
                         const offset = si * (segLen + gap);
                         return (
                           <circle key={si}
-                            cx="18" cy="18" r={rEvent}
+                            cx="20" cy="20" r={rRing}
                             fill="none"
                             stroke={color}
                             strokeWidth="2.5"
-                            strokeDasharray={`${segLen} ${circ - segLen}`}
+                            strokeDasharray={`${segLen} ${circRing - segLen}`}
                             strokeDashoffset={-offset}
                             strokeLinecap="round"
                           />
