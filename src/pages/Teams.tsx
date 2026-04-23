@@ -1737,7 +1737,10 @@ export default function Teams() {
                     <Label>SFT Mode</Label>
                     <div className="flex rounded-lg border overflow-hidden">
                       {(['in_camp', 'personal'] as const).map(k => (
-                        <button key={k} onClick={() => setSftKind(k)}
+                        <button key={k} onClick={() => {
+                          setSftKind(k);
+                          if (k === 'personal') setSubAttendance('Participating');
+                        }}
                           className={`flex-1 py-2 text-sm font-semibold transition-colors ${sftKind === k ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>
                           {k === 'in_camp' ? '🏕️ In Camp' : '🏃 Personal'}
                         </button>
@@ -1763,19 +1766,21 @@ export default function Teams() {
                   </div>
                 )}
 
-                {/* Attendance status */}
-                <div className="space-y-2">
-                  <Label>Attendance Status</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {ATTENDANCE_STATUSES.map(s => (
-                      <button key={s} onClick={() => setSubAttendance(s)}
-                        className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors text-left ${subAttendance === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
-                        {s === 'Participating' && '✅ '}{s === 'Light Duty' && '⚠️ '}{s === 'MC' && '🏥 '}{s === 'On Leave' && '🏖️ '}
-                        {s}
-                      </button>
-                    ))}
+                {/* Attendance status — hidden for personal SFT (always Participating) */}
+                {!(subType === 'SFT' && sftKind === 'personal') && (
+                  <div className="space-y-2">
+                    <Label>Attendance Status</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ATTENDANCE_STATUSES.map(s => (
+                        <button key={s} onClick={() => setSubAttendance(s)}
+                          className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors text-left ${subAttendance === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
+                          {s === 'Participating' && '✅ '}{s === 'Light Duty' && '⚠️ '}{s === 'MC' && '🏥 '}{s === 'On Leave' && '🏖️ '}
+                          {s}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Temperature */}
                 <div className="space-y-2">
