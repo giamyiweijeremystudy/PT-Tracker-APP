@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-const ADMIN_KEY = 'MECH>AV';
+const ADMIN_KEY = '57AETI';
 
 // VAPID public key — set VITE_VAPID_PUBLIC_KEY in .env
 // Generate with: npx web-push generate-vapid-keys
