@@ -147,6 +147,16 @@
     color-scheme: dark;
   }
 
+  /* Prevent iOS Safari/Chrome/Firefox from auto-zooming on input focus.
+     Browsers zoom when font-size < 16px — this ensures all text inputs
+     are always at least 16px on mobile regardless of Tailwind text-sm classes. */
+  @media screen and (max-width: 768px) {
+    input, textarea, select,
+    [contenteditable="true"] {
+      font-size: max(16px, 1em) !important;
+    }
+  }
+
   /* Normalise native date/time inputs so they match other Input fields on all mobile browsers */
   input[type="date"],
   input[type="time"],
