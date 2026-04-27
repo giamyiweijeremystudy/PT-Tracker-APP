@@ -156,7 +156,7 @@ function formatParadeState(
   const statusAbbr: Record<string, string> = {
     'Light Duty': 'LD',
     'MC': 'MC',
-    'On Leave': 'OL',
+    'On Leave / Appointment': 'OL/APPT',
     'RSO': 'RSO',
   };
 
@@ -211,7 +211,7 @@ NOT ATTENDING (${totalNotAttending})`);
 
   return lines.join('\n');
 }
-const ATTENDANCE_STATUSES = ['Participating','Light Duty','MC','On Leave'] as const;
+const ATTENDANCE_STATUSES = ['Participating','Light Duty','MC','On Leave / Appointment'] as const;
 
 type TeamEvent = {
   id: string; team_id: string; created_by: string;
@@ -507,6 +507,7 @@ export default function Teams() {
   const [editSubScreenshotFile, setEditSubScreenshotFile] = useState<File | null>(null);
   const [editSubScreenshotPreview, setEditSubScreenshotPreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [mySubsOpen, setMySubsOpen] = useState(true);
 
   const handleCreate = async () => {
     if (!createName.trim()) { toast({ title: 'Enter a team name', variant: 'destructive' }); return; }
@@ -819,7 +820,7 @@ export default function Teams() {
   };
 
   const downloadSubmissions = (fmt: 'txt' | 'csv', filterDate?: string) => {
-    const STATUS_ORDER: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3 };
+    const STATUS_ORDER: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave / Appointment': 3 };
     const getName = (s: any) => s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ' : ''}${s.profile.full_name}` : s.user_id;
     const getMemberName = (m: any) => `${m.profile?.rank && m.profile.rank !== 'Other' ? m.profile.rank+' ' : ''}${m.profile?.full_name ?? 'Member'}`;
 
@@ -1663,10 +1664,10 @@ export default function Teams() {
         const eventsForDate = events.filter(e => e.event_date === subDate);
         // All-team view: group by date, compute not-submitted per date
         const submissionDates = [...new Set(allSubmissions.map(s => s.submission_date))].sort((a,b) => b.localeCompare(a));
-        const statusEmoji: Record<string,string> = { Participating:'✅', 'Light Duty':'⚠️', MC:'🏥', 'On Leave':'🏖️' };
+        const statusEmoji: Record<string,string> = { Participating:'✅', 'Light Duty':'⚠️', MC:'🏥', 'On Leave / Appointment':'🏖️' };
 
         // For popup: build state string for a given date
-        const STATUS_ORDER_TEXT: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3 };
+        const STATUS_ORDER_TEXT: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave / Appointment': 3 };
         const buildStateText = (date: string) => {
           // Exclude personal SFT — they are logging only, not attendance
           const daySubmissions = allSubmissions.filter(s =>
@@ -1795,7 +1796,7 @@ export default function Teams() {
                       {ATTENDANCE_STATUSES.map(s => (
                         <button key={s} onClick={() => setSubAttendance(s)}
                           className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors text-left ${subAttendance === s ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
-                          {s === 'Participating' && '✅ '}{s === 'Light Duty' && '⚠️ '}{s === 'MC' && '🏥 '}{s === 'On Leave' && '🏖️ '}
+                          {s === 'Participating' && '✅ '}{s === 'Light Duty' && '⚠️ '}{s === 'MC' && '🏥 '}{s === 'On Leave / Appointment' && '🏖️ '}
                           {s}
                         </button>
                       ))}
@@ -1855,12 +1856,22 @@ export default function Teams() {
               </CardContent>
             </Card>
 
-            {/* My submission history */}
+            {/* My submission history — collapsible scrollable module */}
             {submissions.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">My Recent Submissions</p>
-                {submissions.map(s => (
-                  <div key={s.id} className="rounded-lg border bg-card p-3 space-y-2">
+                <div className="rounded-xl border bg-card overflow-hidden">
+                  <button
+                    onClick={() => setMySubsOpen(o => !o)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors"
+                  >
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" /> My Recent Submissions ({submissions.length})
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${mySubsOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {mySubsOpen && (
+                    <div className="overflow-y-auto divide-y" style={{ maxHeight: '320px' }}>
+                  {submissions.map(s => (
+                  <div key={s.id} className="p-3 space-y-2">
                     {editingSubId === s.id ? (
                       // ── Edit mode ──
                       <div className="space-y-3">
@@ -1900,7 +1911,7 @@ export default function Teams() {
                             {ATTENDANCE_STATUSES.map(st => (
                               <button key={st} onClick={() => setSubAttendance(st)}
                                 className={`py-1.5 px-2 rounded-lg border text-xs font-medium transition-colors text-left ${subAttendance === st ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
-                                {st === 'Participating' && '✅ '}{st === 'Light Duty' && '⚠️ '}{st === 'MC' && '🏥 '}{st === 'On Leave' && '🏖️ '}
+                                {st === 'Participating' && '✅ '}{st === 'Light Duty' && '⚠️ '}{st === 'MC' && '🏥 '}{st === 'On Leave / Appointment' && '🏖️ '}
                                 {st}
                               </button>
                             ))}
@@ -2007,7 +2018,9 @@ export default function Teams() {
                     )}
                   </div>
                 ))}
-              </div>
+                    </div>
+                  )}
+                </div>
             )}
 
             {/* ── All Team Submissions (all members) ── */}
@@ -2018,7 +2031,7 @@ export default function Teams() {
               const notSub = members.filter(m => !daySubmissions.some(s => s.user_id === m.user_id));
 
               const STATUS_ORDER: Record<string, number> = {
-                'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3,
+                'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave / Appointment': 3,
               };
               const getName = (s: typeof daySubmissions[0]) =>
                 s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ' : ''}${s.profile.full_name}` : 'Member';
@@ -2666,7 +2679,7 @@ export default function Teams() {
                     {ATTENDANCE_STATUSES.map(st => (
                       <button key={st} onClick={() => setAdminSubAttendance(st)}
                         className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors text-left ${adminSubAttendance === st ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:bg-muted'}`}>
-                        {st === 'Participating' && '✅ '}{st === 'Light Duty' && '⚠️ '}{st === 'MC' && '🏥 '}{st === 'On Leave' && '🏖️ '}
+                        {st === 'Participating' && '✅ '}{st === 'Light Duty' && '⚠️ '}{st === 'MC' && '🏥 '}{st === 'On Leave / Appointment' && '🏖️ '}
                         {st}
                       </button>
                     ))}
@@ -2694,7 +2707,7 @@ export default function Teams() {
 
       {/* ── Attendance Popup ── */}
       {submissionPopupOpen && (() => {
-        const STATUS_ORDER: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave': 3 };
+        const STATUS_ORDER: Record<string, number> = { 'Participating': 0, 'Light Duty': 1, 'MC': 2, 'On Leave / Appointment': 3 };
         const daySubs = allSubmissions.filter(s => s.submission_date === submissionPopupDate);
         const notSubmitted = members.filter(m => !daySubs.some(s => s.user_id === m.user_id));
         const sortedDaySubs = [...daySubs].sort((a, b) => {
@@ -2731,76 +2744,84 @@ export default function Teams() {
 
               {/* Structured parade state body */}
               <div className="overflow-y-auto flex-1 p-5 space-y-4">
-                {/* Submitted section */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-green-600">Submitted ({sortedDaySubs.length})</span>
-                    <div className="flex-1 h-px bg-green-200 dark:bg-green-900" />
-                  </div>
-                  {sortedDaySubs.length === 0 ? (
-                    <p className="text-xs text-muted-foreground px-1">None</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {sortedDaySubs.map(s => {
-                        const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
-                        const isFever = s.temperature != null && s.temperature >= 37.5;
-                        const statusColor: Record<string,string> = {
-                          'Participating': 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
-                          'Light Duty':    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
-                          'MC':            'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-                          'On Leave':      'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
-                        };
-                        return (
-                          <div key={s.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${isFever ? 'bg-red-50 dark:bg-red-950/30' : 'bg-muted/50'}`}>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className={`text-xs font-semibold truncate ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</p>
-                                {isFever && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700 shrink-0">fever</span>
-                                )}
-                              </div>
-                              <p className="text-[10px] text-muted-foreground">{s.session_type}{s.notes ? ` · ${s.notes}` : ''}</p>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {s.temperature != null && (
-                                <span className={`text-[10px] font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>{s.temperature}°C</span>
-                              )}
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor[s.attendance_status] ?? 'bg-muted text-muted-foreground'}`}>
-                                {s.attendance_status}
-                              </span>
-                            </div>
+                {(() => {
+                  const attending    = sortedDaySubs.filter(s => s.attendance_status === 'Participating');
+                  const notAttending = sortedDaySubs.filter(s => s.attendance_status !== 'Participating');
+                  const statusColor: Record<string,string> = {
+                    'Participating':          'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+                    'Light Duty':             'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
+                    'MC':                     'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+                    'On Leave / Appointment': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+                  };
+                  const renderSub = (s: typeof sortedDaySubs[0]) => {
+                    const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
+                    const isFever = s.temperature != null && s.temperature >= 37.5;
+                    return (
+                      <div key={s.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${isFever ? 'bg-red-50 dark:bg-red-950/30' : 'bg-muted/50'}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className={`text-xs font-semibold truncate ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</p>
+                            {isFever && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700 shrink-0">fever</span>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                          <p className="text-[10px] text-muted-foreground">{s.session_type}{s.notes ? ` · ${s.notes}` : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {s.temperature != null && (
+                            <span className={`text-[10px] font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>{s.temperature}°C</span>
+                          )}
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor[s.attendance_status] ?? 'bg-muted text-muted-foreground'}`}>
+                            {s.attendance_status}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  };
+                  return (
+                    <>
+                      {/* Attending */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-green-600">Attending ({attending.length})</span>
+                          <div className="flex-1 h-px bg-green-200 dark:bg-green-900" />
+                        </div>
+                        {attending.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-1">None</p>
+                        ) : (
+                          <div className="space-y-1.5">{attending.map(renderSub)}</div>
+                        )}
+                      </div>
 
-                {/* Not submitted section */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-red-500">Not Submitted ({sortedNotSub.length})</span>
-                    <div className="flex-1 h-px bg-red-200 dark:bg-red-900" />
-                  </div>
-                  {sortedNotSub.length === 0 ? (
-                    <p className="text-xs text-muted-foreground px-1">All submitted! 🎉</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {sortedNotSub.map(m => {
-                        const mp = m.profile;
-                        const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
-                        return (
-                          <div key={m.user_id} className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2">
-                            <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
-                              {(mp?.full_name ?? 'M').charAt(0).toUpperCase()}
-                            </div>
-                            <p className="text-xs font-medium truncate">{name}</p>
+                      {/* Not Attending (LD / MC / On Leave) */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-yellow-600">Not Attending ({notAttending.length + sortedNotSub.length})</span>
+                          <div className="flex-1 h-px bg-yellow-200 dark:bg-yellow-900" />
+                        </div>
+                        {notAttending.length === 0 && sortedNotSub.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-1">None</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {notAttending.map(renderSub)}
+                            {sortedNotSub.map(m => {
+                              const mp = m.profile;
+                              const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
+                              return (
+                                <div key={m.user_id} className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium truncate">{name}</p>
+                                  </div>
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">No submission</span>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* Raw text export area */}
                 <div>
