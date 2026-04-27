@@ -17,6 +17,7 @@ export interface Profile {
   ippt_run_seconds?: number;
   ippt_score?: number;
   is_admin?: boolean;
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -85,7 +86,11 @@ export function useAuth() {
     await supabase.auth.signOut();
   };
 
+  const refreshProfile = useCallback(() => {
+    if (user) return fetchProfileAndRoles(user.id);
+  }, [user, fetchProfileAndRoles]);
+
   const hasRole = (role: AppRole) => roles.includes(role);
 
-  return { user, session, loading, profile, roles, hasRole, signIn, signUp, signOut };
+  return { user, session, loading, profile, roles, hasRole, signIn, signUp, signOut, refreshProfile };
 }
