@@ -538,21 +538,38 @@ export default function ProfileStatistics() {
   const handleAvatarUpload = async (file: File) => {
     if (!user) return;
     setAvatarUploading(true);
-    const ext = file.name.split('.').pop() ?? 'jpg';
-    const path = `${user.id}/avatar.${ext}`;
+
+    // Always use a fixed path so upsert reliably overwrites the old file
+    const path = `${user.id}/avatar`;
+
     const { error: uploadError } = await supabase.storage
       .from('avatars')
       .upload(path, file, { upsert: true, contentType: file.type });
+
     if (uploadError) {
       toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
       setAvatarUploading(false);
       return;
     }
+
+    // Get clean URL (no cache-buster) to store in DB
     const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-    // Append cache-buster so the browser refreshes the image
-    const avatarUrl = data.publicUrl + '?t=' + Date.now();
-    await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
-    setProfileData(p => p ? { ...p, avatar_url: avatarUrl } : p);
+    const cleanUrl = data.publicUrl;
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: cleanUrl })
+      .eq('id', user.id);
+
+    if (updateError) {
+      toast({ title: 'Failed to save profile picture', description: updateError.message, variant: 'destructive' });
+      setAvatarUploading(false);
+      return;
+    }
+
+    // Add cache-buster only for local display so browser shows the new image immediately
+    const displayUrl = cleanUrl + '?t=' + Date.now();
+    setProfileData(p => p ? { ...p, avatar_url: displayUrl } : p);
     setAvatarUploading(false);
     toast({ title: 'Profile picture updated!' });
   };
