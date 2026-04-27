@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import {
   Trophy, Timer, Dumbbell, CalendarDays, Calculator,
   Activity, Users, TrendingUp, BookOpen, MessageSquare,
-  BookMarked, Pin, ChevronRight, Zap,
+  BookMarked, Pin, ChevronRight, Zap, Upload, CheckCircle2, User,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -91,14 +91,18 @@ const EVENT_TYPE_STYLE: Record<string,string> = {
 };
 
 const quickActions = [
-  { label: 'Log Activity',     to: '/activities',  icon: Activity,      color: 'text-green-500'  },
-  { label: 'Calculators',      to: '/calculators', icon: Calculator,    color: 'text-blue-500'   },
-  { label: 'My Team',          to: '/teams',       icon: Users,         color: 'text-violet-500' },
-  { label: 'Schedule',         to: '/schedule',    icon: CalendarDays,  color: 'text-orange-500' },
-  { label: 'Programs',         to: '/programs',    icon: BookMarked,    color: 'text-pink-500'   },
-  { label: 'Progress',         to: '/progress',    icon: TrendingUp,    color: 'text-teal-500'   },
-  { label: 'Useful Info',      to: '/useful-info', icon: BookOpen,      color: 'text-yellow-500' },
-  { label: 'PT Assistant',     to: '/chat',        icon: MessageSquare, color: 'text-primary'    },
+  { label: 'Log Activity',     to: '/activities',              icon: Activity,      color: 'text-green-500'  },
+  { label: 'Calculators',      to: '/calculators',             icon: Calculator,    color: 'text-blue-500'   },
+  { label: 'My Team',          to: '/teams',                   icon: Users,         color: 'text-violet-500' },
+  { label: 'Schedule',         to: '/schedule',                icon: CalendarDays,  color: 'text-orange-500' },
+  { label: 'Programs',         to: '/programs',                icon: BookMarked,    color: 'text-pink-500'   },
+  { label: 'Progress',         to: '/progress',                icon: TrendingUp,    color: 'text-teal-500'   },
+  { label: 'Useful Info',      to: '/useful-info',             icon: BookOpen,      color: 'text-yellow-500' },
+  { label: 'PT Assistant',     to: '/chat',                    icon: MessageSquare, color: 'text-primary'    },
+  { label: 'Team Activity',    to: '/teams?tab=activities',    icon: Activity,      color: 'text-indigo-500' },
+  { label: 'Submissions',      to: '/teams?tab=submissions',   icon: CheckCircle2,  color: 'text-emerald-500'},
+  { label: 'Upload Activity',  to: '/activities?upload=1',     icon: Upload,        color: 'text-rose-500'   },
+  { label: 'Profile',          to: '/profile',                 icon: User,          color: 'text-amber-500'  },
 ];
 
 interface PersonalEvent {
