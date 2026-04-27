@@ -7,12 +7,11 @@ import {
   SidebarGroupContent, SidebarHeader,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
 } from '@/components/ui/sidebar';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useState } from 'react';
 
 const mainItems = [
   { title: 'Dashboard',            url: '/',             icon: LayoutDashboard },
-  { title: 'Profile & Statistics', url: '/profile',      icon: User            },
   { title: 'Calculators',          url: '/calculators',  icon: Calculator      },
   { title: 'Activities',           url: '/activities',   icon: Activity        },
   { title: 'Teams',                url: '/teams',        icon: Users           },
@@ -114,8 +113,13 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <div className="flex items-center gap-2 px-2 py-1.5">
+            <button
+              onClick={() => navigate('/profile')}
+              className="flex items-center gap-2 px-2 py-1.5 w-full rounded-md hover:bg-sidebar-accent transition-colors text-left"
+              title="View Profile & Statistics"
+            >
               <Avatar className="h-7 w-7 shrink-0">
+                <AvatarImage src={(profile as any)?.avatar_url ?? undefined} alt={profile?.full_name ?? ''} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
               </Avatar>
               {!collapsed && (
@@ -125,7 +129,7 @@ export function AppSidebar() {
                     <span className="text-xs text-sidebar-foreground/60 truncate">{(profile as any)?.rank}</span>
                   </div>
                   <button
-                    onClick={handleSettingsTap}
+                    onClick={e => { e.stopPropagation(); handleSettingsTap(); }}
                     className="p-1 rounded hover:bg-sidebar-accent transition-colors"
                     title="Settings"
                   >
@@ -133,7 +137,7 @@ export function AppSidebar() {
                   </button>
                 </>
               )}
-            </div>
+            </button>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={handleSignOut}>
