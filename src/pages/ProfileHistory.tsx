@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTeam } from '@/contexts/TeamContext';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { User, Trophy, Pencil, AlertCircle, SlidersHorizontal, Check } from 'lucide-react';
+import { User, Trophy, Pencil, AlertCircle, SlidersHorizontal, Check, Camera, ArrowLeft } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, BarChart, Bar,
@@ -40,6 +41,7 @@ type ProfileData = {
   ippt_pushups: number | null;
   ippt_situps: number | null;
   ippt_run_seconds: number | null;
+  avatar_url: string | null;
 };
 
 // ─── IPPT Scoring Tables ──────────────────────────────────────────────────────
@@ -496,6 +498,12 @@ export default function ProfileStatistics() {
   const { roles, user, profile: authProfile } = useAuth();
   const { myTeamRole, myRole } = useTeam();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // If ?user=<id> is set, we're viewing someone else's profile
+  const viewUserId = searchParams.get('user') ?? user?.id ?? null;
+  const isOwnProfile = !searchParams.get('user') || searchParams.get('user') === user?.id;
 
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -505,15 +513,19 @@ export default function ProfileStatistics() {
   const [selectedStats, setSelectedStats] = useState<Set<string>>(new Set());
   const [editForm, setEditForm] = useState<Partial<ProfileData>>({});
 
-  useEffect(() => { if (user) { fetchProfile(); fetchActivities(); } }, [user]);
+  // Avatar upload state
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  useEffect(() => { if (viewUserId) { fetchProfile(); fetchActivities(); } }, [viewUserId]);
 
   const fetchProfile = async () => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', user!.id).single();
+    const { data } = await supabase.from('profiles').select('*').eq('id', viewUserId!).single();
     if (data) { setProfileData(data as unknown as ProfileData); setEditForm(data as unknown as ProfileData); }
   };
 
   const fetchActivities = async () => {
-    const { data } = await supabase.from('activities').select('*').eq('user_id', user!.id).order('date', { ascending: true });
+    const { data } = await supabase.from('activities').select('*').eq('user_id', viewUserId!).order('date', { ascending: true });
     if (data) setActivities(data as Activity[]);
   };
 
@@ -521,6 +533,28 @@ export default function ProfileStatistics() {
     const { error } = await supabase.from('profiles').update(editForm).eq('id', user!.id);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
     else { toast({ title: 'Profile updated!' }); fetchProfile(); setEditOpen(false); }
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!user) return;
+    setAvatarUploading(true);
+    const ext = file.name.split('.').pop() ?? 'jpg';
+    const path = `${user.id}/avatar.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (uploadError) {
+      toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
+      setAvatarUploading(false);
+      return;
+    }
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    // Append cache-buster so the browser refreshes the image
+    const avatarUrl = data.publicUrl + '?t=' + Date.now();
+    await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
+    setProfileData(p => p ? { ...p, avatar_url: avatarUrl } : p);
+    setAvatarUploading(false);
+    toast({ title: 'Profile picture updated!' });
   };
 
   const toggleStat = (id: string) => {
@@ -588,75 +622,124 @@ export default function ProfileStatistics() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
+          {!isOwnProfile && (
+            <button onClick={() => navigate(-1)} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground">
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          )}
           <User className="h-7 w-7 text-primary" />
-          <h1 className="text-2xl font-bold text-foreground">Profile & Statistics</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            {isOwnProfile ? 'Profile & Statistics' : `${profileData?.full_name ?? 'Profile'}`}
+          </h1>
         </div>
-        <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm"><Pencil className="h-4 w-4 mr-1" /> Edit Profile</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader><DialogTitle>Edit Profile</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Rank</Label>
-                  <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={editForm.rank || ''} onChange={e => setEditForm(f => ({ ...f, rank: e.target.value }))}>
-                    {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
+        {isOwnProfile && (
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm"><Pencil className="h-4 w-4 mr-1" /> Edit Profile</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader><DialogTitle>Edit Profile</DialogTitle></DialogHeader>
+              <div className="space-y-3">
+                {/* Avatar upload */}
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <Avatar className="h-16 w-16">
+                      <AvatarImage src={profileData?.avatar_url ?? undefined} />
+                      <AvatarFallback className="bg-primary text-primary-foreground text-xl">{initials}</AvatarFallback>
+                    </Avatar>
+                    <button
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarUploading}
+                      className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow hover:bg-primary/90 transition-colors"
+                    >
+                      <Camera className="h-3 w-3" />
+                    </button>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleAvatarUpload(f); }}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Profile Picture</p>
+                    <p className="text-xs text-muted-foreground">{avatarUploading ? 'Uploading...' : 'Tap camera to change'}</p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label>Full Name</Label>
-                  <Input value={editForm.full_name || ''} onChange={e => setEditForm(f => ({ ...f, full_name: e.target.value }))} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Age <span className="text-destructive">*</span></Label>
-                  <Input type="number" placeholder="Required for IPPT" value={editForm.age || ''} onChange={e => setEditForm(f => ({ ...f, age: parseInt(e.target.value) }))} />
-                </div>
-                <div className="space-y-1">
-                  <Label>Height (cm)</Label>
-                  <Input type="number" value={editForm.height_cm || ''} onChange={e => setEditForm(f => ({ ...f, height_cm: parseFloat(e.target.value) }))} />
-                </div>
-              </div>
-              <div className="border-t pt-3">
-                <p className="text-sm font-medium mb-2">Official IPPT Results</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label>Push-ups</Label>
-                    <Input type="number" value={editForm.ippt_pushups || ''} onChange={e => setEditForm(f => ({ ...f, ippt_pushups: parseInt(e.target.value) }))} />
+                    <Label>Rank</Label>
+                    <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={editForm.rank || ''} onChange={e => setEditForm(f => ({ ...f, rank: e.target.value }))}>
+                      {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-1">
-                    <Label>Sit-ups</Label>
-                    <Input type="number" value={editForm.ippt_situps || ''} onChange={e => setEditForm(f => ({ ...f, ippt_situps: parseInt(e.target.value) }))} />
+                    <Label>Full Name</Label>
+                    <Input value={editForm.full_name || ''} onChange={e => setEditForm(f => ({ ...f, full_name: e.target.value }))} />
                   </div>
-                  <div className="col-span-2 space-y-1">
-                    <Label>2.4km Run Time (MM : SS)</Label>
-                    <div className="flex gap-2">
-                      <Input type="number" placeholder="MM"
-                        value={editForm.ippt_run_seconds ? Math.floor(editForm.ippt_run_seconds / 60) : ''}
-                        onChange={e => setEditForm(f => ({ ...f, ippt_run_seconds: parseInt(e.target.value) * 60 + ((f.ippt_run_seconds || 0) % 60) }))} />
-                      <Input type="number" placeholder="SS"
-                        value={editForm.ippt_run_seconds ? editForm.ippt_run_seconds % 60 : ''}
-                        onChange={e => setEditForm(f => ({ ...f, ippt_run_seconds: Math.floor((f.ippt_run_seconds || 0) / 60) * 60 + parseInt(e.target.value) }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Age <span className="text-destructive">*</span></Label>
+                    <Input type="number" placeholder="Required for IPPT" value={editForm.age || ''} onChange={e => setEditForm(f => ({ ...f, age: parseInt(e.target.value) }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Height (cm)</Label>
+                    <Input type="number" value={editForm.height_cm || ''} onChange={e => setEditForm(f => ({ ...f, height_cm: parseFloat(e.target.value) }))} />
+                  </div>
+                </div>
+                <div className="border-t pt-3">
+                  <p className="text-sm font-medium mb-2">Official IPPT Results</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label>Push-ups</Label>
+                      <Input type="number" value={editForm.ippt_pushups || ''} onChange={e => setEditForm(f => ({ ...f, ippt_pushups: parseInt(e.target.value) }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Sit-ups</Label>
+                      <Input type="number" value={editForm.ippt_situps || ''} onChange={e => setEditForm(f => ({ ...f, ippt_situps: parseInt(e.target.value) }))} />
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <Label>2.4km Run Time (MM : SS)</Label>
+                      <div className="flex gap-2">
+                        <Input type="number" placeholder="MM"
+                          value={editForm.ippt_run_seconds ? Math.floor(editForm.ippt_run_seconds / 60) : ''}
+                          onChange={e => setEditForm(f => ({ ...f, ippt_run_seconds: parseInt(e.target.value) * 60 + ((f.ippt_run_seconds || 0) % 60) }))} />
+                        <Input type="number" placeholder="SS"
+                          value={editForm.ippt_run_seconds ? editForm.ippt_run_seconds % 60 : ''}
+                          onChange={e => setEditForm(f => ({ ...f, ippt_run_seconds: Math.floor((f.ippt_run_seconds || 0) / 60) * 60 + parseInt(e.target.value) }))} />
+                      </div>
                     </div>
                   </div>
                 </div>
+                <Button className="w-full" onClick={saveProfile}>Save</Button>
               </div>
-              <Button className="w-full" onClick={saveProfile}>Save</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Profile card */}
       <Card>
         <CardContent className="flex items-center gap-4 p-5">
-          <Avatar className="h-16 w-16 shrink-0">
-            <AvatarFallback className="bg-primary text-primary-foreground text-xl">{initials}</AvatarFallback>
-          </Avatar>
+          <div className="relative shrink-0">
+            <Avatar className="h-16 w-16">
+              <AvatarImage src={profileData?.avatar_url ?? undefined} alt={profileData?.full_name ?? ''} />
+              <AvatarFallback className="bg-primary text-primary-foreground text-xl">{initials}</AvatarFallback>
+            </Avatar>
+            {isOwnProfile && (
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarUploading}
+                className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow hover:bg-primary/90 transition-colors"
+                title="Change profile picture"
+              >
+                <Camera className="h-3 w-3" />
+              </button>
+            )}
+          </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-xl font-bold text-foreground truncate">
