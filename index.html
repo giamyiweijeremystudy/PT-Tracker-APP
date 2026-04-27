@@ -38,5 +38,25 @@
         });
       }
     </script>
+    <script>
+      // Prevent iOS Safari/Chrome/Firefox from auto-zooming on input focus
+      // and snapping the viewport on blur. Temporarily locks maximum-scale
+      // while an input is focused, then restores pinch-zoom when done.
+      (function () {
+        var viewport = document.querySelector('meta[name=viewport]');
+        if (!viewport) return;
+        var original = viewport.getAttribute('content');
+        var locked   = original + ', maximum-scale=1';
+        function lock()    { viewport.setAttribute('content', locked); }
+        function restore() { viewport.setAttribute('content', original); }
+        document.addEventListener('focusin', function (e) {
+          var tag = e.target && e.target.tagName;
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') lock();
+        }, true);
+        document.addEventListener('focusout', function () {
+          restore();
+        }, true);
+      })();
+    </script>
   </body>
 </html>
