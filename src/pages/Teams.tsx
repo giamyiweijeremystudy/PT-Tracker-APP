@@ -2744,84 +2744,76 @@ export default function Teams() {
 
               {/* Structured parade state body */}
               <div className="overflow-y-auto flex-1 p-5 space-y-4">
-                {(() => {
-                  const attending    = sortedDaySubs.filter(s => s.attendance_status === 'Participating');
-                  const notAttending = sortedDaySubs.filter(s => s.attendance_status !== 'Participating');
-                  const statusColor: Record<string,string> = {
-                    'Participating':          'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
-                    'Light Duty':             'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
-                    'MC':                     'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-                    'On Leave / Appointment': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
-                  };
-                  const renderSub = (s: typeof sortedDaySubs[0]) => {
-                    const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
-                    const isFever = s.temperature != null && s.temperature >= 37.5;
-                    return (
-                      <div key={s.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${isFever ? 'bg-red-50 dark:bg-red-950/30' : 'bg-muted/50'}`}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className={`text-xs font-semibold truncate ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</p>
-                            {isFever && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700 shrink-0">fever</span>
-                            )}
+                {/* Submitted section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-green-600">Submitted ({sortedDaySubs.length})</span>
+                    <div className="flex-1 h-px bg-green-200 dark:bg-green-900" />
+                  </div>
+                  {sortedDaySubs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-1">None</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {sortedDaySubs.map(s => {
+                        const name = s.profile ? `${s.profile.rank && s.profile.rank !== 'Other' ? s.profile.rank+' ':'' }${s.profile.full_name}` : 'Member';
+                        const isFever = s.temperature != null && s.temperature >= 37.5;
+                        const statusColor: Record<string,string> = {
+                          'Participating':          'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+                          'Light Duty':             'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
+                          'MC':                     'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+                          'On Leave / Appointment': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+                        };
+                        return (
+                          <div key={s.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${isFever ? 'bg-red-50 dark:bg-red-950/30' : 'bg-muted/50'}`}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className={`text-xs font-semibold truncate ${isFever ? 'text-red-600 dark:text-red-400' : ''}`}>{name}</p>
+                                {isFever && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border border-red-300 dark:border-red-700 shrink-0">fever</span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">{s.session_type}{s.notes ? ` · ${s.notes}` : ''}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {s.temperature != null && (
+                                <span className={`text-[10px] font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>{s.temperature}°C</span>
+                              )}
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor[s.attendance_status] ?? 'bg-muted text-muted-foreground'}`}>
+                                {s.attendance_status}
+                              </span>
+                            </div>
                           </div>
-                          <p className="text-[10px] text-muted-foreground">{s.session_type}{s.notes ? ` · ${s.notes}` : ''}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {s.temperature != null && (
-                            <span className={`text-[10px] font-medium ${isFever ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>{s.temperature}°C</span>
-                          )}
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusColor[s.attendance_status] ?? 'bg-muted text-muted-foreground'}`}>
-                            {s.attendance_status}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  };
-                  return (
-                    <>
-                      {/* Attending */}
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-bold uppercase tracking-wider text-green-600">Attending ({attending.length})</span>
-                          <div className="flex-1 h-px bg-green-200 dark:bg-green-900" />
-                        </div>
-                        {attending.length === 0 ? (
-                          <p className="text-xs text-muted-foreground px-1">None</p>
-                        ) : (
-                          <div className="space-y-1.5">{attending.map(renderSub)}</div>
-                        )}
-                      </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
-                      {/* Not Attending (LD / MC / On Leave) */}
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-bold uppercase tracking-wider text-yellow-600">Not Attending ({notAttending.length + sortedNotSub.length})</span>
-                          <div className="flex-1 h-px bg-yellow-200 dark:bg-yellow-900" />
-                        </div>
-                        {notAttending.length === 0 && sortedNotSub.length === 0 ? (
-                          <p className="text-xs text-muted-foreground px-1">None</p>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {notAttending.map(renderSub)}
-                            {sortedNotSub.map(m => {
-                              const mp = m.profile;
-                              const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
-                              return (
-                                <div key={m.user_id} className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium truncate">{name}</p>
-                                  </div>
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">No submission</span>
-                                </div>
-                              );
-                            })}
+                {/* Not submitted section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-red-500">Not Submitted ({sortedNotSub.length})</span>
+                    <div className="flex-1 h-px bg-red-200 dark:bg-red-900" />
+                  </div>
+                  {sortedNotSub.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-1">All submitted! 🎉</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {sortedNotSub.map(m => {
+                        const mp = m.profile;
+                        const name = `${mp?.rank && mp.rank !== 'Other' ? mp.rank+' ' : ''}${mp?.full_name ?? 'Member'}`;
+                        return (
+                          <div key={m.user_id} className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2">
+                            <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
+                              {(mp?.full_name ?? 'M').charAt(0).toUpperCase()}
+                            </div>
+                            <p className="text-xs font-medium truncate">{name}</p>
                           </div>
-                        )}
-                      </div>
-                    </>
-                  );
-                })()}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {/* Raw text export area */}
                 <div>
