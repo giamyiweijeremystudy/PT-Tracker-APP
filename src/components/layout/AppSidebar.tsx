@@ -119,7 +119,7 @@ export function AppSidebar() {
               title="View Profile & Statistics"
             >
               <Avatar className="h-7 w-7 shrink-0">
-                <AvatarImage src={(profile as any)?.avatar_url ?? undefined} alt={profile?.full_name ?? ''} />
+                <AvatarImage src={profile?.avatar_url ?? undefined} alt={profile?.full_name ?? ''} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
               </Avatar>
               {!collapsed && (
