@@ -495,7 +495,7 @@ const STAT_DEFS: StatDef[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ProfileStatistics() {
-  const { roles, user, profile: authProfile } = useAuth();
+  const { roles, user, profile: authProfile, refreshProfile } = useAuth();
   const { myTeamRole, myRole } = useTeam();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -512,13 +512,10 @@ export default function ProfileStatistics() {
   const [graphView, setGraphView] = useState<'week' | 'month'>('month');
   const [selectedStats, setSelectedStats] = useState<Set<string>>(new Set());
   const [editForm, setEditForm] = useState<Partial<ProfileData>>({});
-
-  // Avatar upload state
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-  const cardAvatarInputRef = useRef<HTMLInputElement>(null);
-  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
   const [pendingAvatarPreview, setPendingAvatarPreview] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (viewUserId) { fetchProfile(); fetchActivities(); } }, [viewUserId]);
 
@@ -533,69 +530,42 @@ export default function ProfileStatistics() {
   };
 
   const saveProfile = async () => {
-    setAvatarUploading(true);
-    let avatarUrl: string | null = editForm.avatar_url ?? profileData?.avatar_url ?? null;
+    if (!user) return;
+    setSaving(true);
 
-    // Upload pending avatar file if one was selected
+    let avatarUrl: string | null = profileData?.avatar_url ?? null;
+
+    // 1. Upload avatar if one was staged
     if (pendingAvatarFile) {
-      const path = `${user!.id}/avatar`;
-      const { error: uploadError } = await supabase.storage
+      const path = `${user.id}/avatar`;
+      const { error: storageErr } = await supabase.storage
         .from('avatars')
         .upload(path, pendingAvatarFile, { upsert: true, contentType: pendingAvatarFile.type });
-      if (uploadError) {
-        toast({ title: 'Avatar upload failed', description: uploadError.message, variant: 'destructive' });
-        setAvatarUploading(false);
+      if (storageErr) {
+        toast({ title: 'Avatar upload failed', description: storageErr.message, variant: 'destructive' });
+        setSaving(false);
         return;
       }
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      avatarUrl = urlData.publicUrl;
+      avatarUrl = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
     }
 
-    const payload = { ...editForm, avatar_url: avatarUrl } as any;
-    const { error } = await supabase.from('profiles').update(payload).eq('id', user!.id);
-    setAvatarUploading(false);
-    if (error) {
-      toast({ title: 'Error saving profile', description: error.message, variant: 'destructive' });
-      return;
-    }
+    // 2. Save all profile fields + avatar_url together
+    const { error } = await supabase
+      .from('profiles')
+      .update({ ...editForm, avatar_url: avatarUrl } as any)
+      .eq('id', user.id);
+
+    setSaving(false);
+    if (error) { toast({ title: 'Save failed', description: error.message, variant: 'destructive' }); return; }
+
     toast({ title: 'Profile updated!' });
     setPendingAvatarFile(null);
     setPendingAvatarPreview(null);
-    fetchProfile();
     setEditOpen(false);
-  };
 
-  const handleAvatarUpload = async (file: File) => {
-    // Just stage the file — it gets uploaded when the user clicks Save
-    setPendingAvatarFile(file);
-    setPendingAvatarPreview(URL.createObjectURL(file));
-  };
-
-  const handleCardAvatarUpload = async (file: File) => {
-    // Direct upload from the profile card (outside the dialog) — save immediately
-    setAvatarUploading(true);
-    const path = `${user!.id}/avatar`;
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true, contentType: file.type });
-    if (uploadError) {
-      toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
-      setAvatarUploading(false);
-      return;
-    }
-    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-    const cleanUrl = urlData.publicUrl;
-    const { error: updateError } = await (supabase.from('profiles') as any)
-      .update({ avatar_url: cleanUrl })
-      .eq('id', user!.id);
-    if (updateError) {
-      toast({ title: 'Failed to save picture', description: updateError.message, variant: 'destructive' });
-      setAvatarUploading(false);
-      return;
-    }
-    setProfileData(p => p ? { ...p, avatar_url: cleanUrl + '?t=' + Date.now() } : p);
-    setAvatarUploading(false);
-    toast({ title: 'Profile picture updated!' });
+    // 3. Refresh everywhere — local page + global useAuth context (sidebar, teams, etc.)
+    fetchProfile();
+    refreshProfile?.();
   };
 
   const toggleStat = (id: string) => {
@@ -699,13 +669,16 @@ export default function ProfileStatistics() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={e => { const f = e.target.files?.[0]; if (f) handleAvatarUpload(f); }}
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) { setPendingAvatarFile(f); setPendingAvatarPreview(URL.createObjectURL(f)); }
+                      }}
                     />
                   </div>
                   <div>
                     <p className="text-sm font-medium">Profile Picture</p>
                     <p className="text-xs text-muted-foreground">
-                      {pendingAvatarFile ? `${pendingAvatarFile.name} — click Save to apply` : 'Tap camera icon to change'}
+                      {pendingAvatarFile ? `Ready to save` : 'Tap camera icon to change'}
                     </p>
                   </div>
                 </div>
@@ -756,8 +729,8 @@ export default function ProfileStatistics() {
                     </div>
                   </div>
                 </div>
-                <Button className="w-full" onClick={saveProfile} disabled={avatarUploading}>
-                  {avatarUploading ? 'Saving...' : 'Save'}
+                <Button className="w-full" onClick={saveProfile} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
                 </Button>
               </div>
             </DialogContent>
@@ -774,23 +747,13 @@ export default function ProfileStatistics() {
               <AvatarFallback className="bg-primary text-primary-foreground text-xl">{initials}</AvatarFallback>
             </Avatar>
             {isOwnProfile && (
-              <>
-                <button
-                  onClick={() => cardAvatarInputRef.current?.click()}
-                  disabled={avatarUploading}
-                  className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow hover:bg-primary/90 transition-colors"
-                  title="Change profile picture"
-                >
-                  <Camera className="h-3 w-3" />
-                </button>
-                <input
-                  ref={cardAvatarInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleCardAvatarUpload(f); }}
-                />
-              </>
+              <button
+                onClick={() => setEditOpen(true)}
+                className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow hover:bg-primary/90 transition-colors"
+                title="Edit profile"
+              >
+                <Camera className="h-3 w-3" />
+              </button>
             )}
           </div>
           <div className="flex-1 min-w-0">
