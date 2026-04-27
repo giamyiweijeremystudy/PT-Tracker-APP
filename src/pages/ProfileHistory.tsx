@@ -515,7 +515,10 @@ export default function ProfileStatistics() {
 
   // Avatar upload state
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const cardAvatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const [pendingAvatarPreview, setPendingAvatarPreview] = useState<string | null>(null);
 
   useEffect(() => { if (viewUserId) { fetchProfile(); fetchActivities(); } }, [viewUserId]);
 
@@ -530,52 +533,67 @@ export default function ProfileStatistics() {
   };
 
   const saveProfile = async () => {
-    const { error } = await supabase.from('profiles').update(editForm).eq('id', user!.id);
-    if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); }
-    else { toast({ title: 'Profile updated!' }); fetchProfile(); setEditOpen(false); }
+    setAvatarUploading(true);
+    let avatarUrl: string | null = editForm.avatar_url ?? profileData?.avatar_url ?? null;
+
+    // Upload pending avatar file if one was selected
+    if (pendingAvatarFile) {
+      const path = `${user!.id}/avatar`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, pendingAvatarFile, { upsert: true, contentType: pendingAvatarFile.type });
+      if (uploadError) {
+        toast({ title: 'Avatar upload failed', description: uploadError.message, variant: 'destructive' });
+        setAvatarUploading(false);
+        return;
+      }
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+      avatarUrl = urlData.publicUrl;
+    }
+
+    const payload = { ...editForm, avatar_url: avatarUrl } as any;
+    const { error } = await supabase.from('profiles').update(payload).eq('id', user!.id);
+    setAvatarUploading(false);
+    if (error) {
+      toast({ title: 'Error saving profile', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Profile updated!' });
+    setPendingAvatarFile(null);
+    setPendingAvatarPreview(null);
+    fetchProfile();
+    setEditOpen(false);
   };
 
   const handleAvatarUpload = async (file: File) => {
-    if (!user) return;
+    // Just stage the file — it gets uploaded when the user clicks Save
+    setPendingAvatarFile(file);
+    setPendingAvatarPreview(URL.createObjectURL(file));
+  };
+
+  const handleCardAvatarUpload = async (file: File) => {
+    // Direct upload from the profile card (outside the dialog) — save immediately
     setAvatarUploading(true);
-
-    const path = `${user.id}/avatar`;
-
+    const path = `${user!.id}/avatar`;
     const { error: uploadError } = await supabase.storage
       .from('avatars')
       .upload(path, file, { upsert: true, contentType: file.type });
-
     if (uploadError) {
       toast({ title: 'Upload failed', description: uploadError.message, variant: 'destructive' });
       setAvatarUploading(false);
       return;
     }
-
     const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
     const cleanUrl = urlData.publicUrl;
-
-    // Use .select() to force execution and catch silent failures.
-    // Cast payload to any to bypass stale generated types that don't include avatar_url yet.
-    const { data: updatedRows, error: updateError } = await supabase
-      .from('profiles')
-      .update({ avatar_url: cleanUrl } as any)
-      .eq('id', user.id)
-      .select('id, avatar_url');
-
+    const { error: updateError } = await (supabase.from('profiles') as any)
+      .update({ avatar_url: cleanUrl })
+      .eq('id', user!.id);
     if (updateError) {
-      toast({ title: 'Failed to save profile picture', description: updateError.message, variant: 'destructive' });
+      toast({ title: 'Failed to save picture', description: updateError.message, variant: 'destructive' });
       setAvatarUploading(false);
       return;
     }
-
-    if (!updatedRows || updatedRows.length === 0) {
-      toast({ title: 'Failed to save profile picture', description: 'No profile row was updated. Please try again.', variant: 'destructive' });
-      setAvatarUploading(false);
-      return;
-    }
-
-    const displayUrl = cleanUrl + '?t=' + Date.now();
-    setProfileData(p => p ? { ...p, avatar_url: displayUrl } : p);
+    setProfileData(p => p ? { ...p, avatar_url: cleanUrl + '?t=' + Date.now() } : p);
     setAvatarUploading(false);
     toast({ title: 'Profile picture updated!' });
   };
@@ -656,7 +674,7 @@ export default function ProfileStatistics() {
           </h1>
         </div>
         {isOwnProfile && (
-          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <Dialog open={editOpen} onOpenChange={open => { setEditOpen(open); if (!open) { setPendingAvatarFile(null); setPendingAvatarPreview(null); } }}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm"><Pencil className="h-4 w-4 mr-1" /> Edit Profile</Button>
             </DialogTrigger>
@@ -667,12 +685,11 @@ export default function ProfileStatistics() {
                 <div className="flex items-center gap-4">
                   <div className="relative">
                     <Avatar className="h-16 w-16">
-                      <AvatarImage src={profileData?.avatar_url ?? undefined} />
+                      <AvatarImage src={pendingAvatarPreview ?? profileData?.avatar_url ?? undefined} />
                       <AvatarFallback className="bg-primary text-primary-foreground text-xl">{initials}</AvatarFallback>
                     </Avatar>
                     <button
                       onClick={() => avatarInputRef.current?.click()}
-                      disabled={avatarUploading}
                       className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow hover:bg-primary/90 transition-colors"
                     >
                       <Camera className="h-3 w-3" />
@@ -687,7 +704,9 @@ export default function ProfileStatistics() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">Profile Picture</p>
-                    <p className="text-xs text-muted-foreground">{avatarUploading ? 'Uploading...' : 'Tap camera to change'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {pendingAvatarFile ? `${pendingAvatarFile.name} — click Save to apply` : 'Tap camera icon to change'}
+                    </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -737,7 +756,9 @@ export default function ProfileStatistics() {
                     </div>
                   </div>
                 </div>
-                <Button className="w-full" onClick={saveProfile}>Save</Button>
+                <Button className="w-full" onClick={saveProfile} disabled={avatarUploading}>
+                  {avatarUploading ? 'Saving...' : 'Save'}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -753,14 +774,23 @@ export default function ProfileStatistics() {
               <AvatarFallback className="bg-primary text-primary-foreground text-xl">{initials}</AvatarFallback>
             </Avatar>
             {isOwnProfile && (
-              <button
-                onClick={() => avatarInputRef.current?.click()}
-                disabled={avatarUploading}
-                className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow hover:bg-primary/90 transition-colors"
-                title="Change profile picture"
-              >
-                <Camera className="h-3 w-3" />
-              </button>
+              <>
+                <button
+                  onClick={() => cardAvatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow hover:bg-primary/90 transition-colors"
+                  title="Change profile picture"
+                >
+                  <Camera className="h-3 w-3" />
+                </button>
+                <input
+                  ref={cardAvatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleCardAvatarUpload(f); }}
+                />
+              </>
             )}
           </div>
           <div className="flex-1 min-w-0">
