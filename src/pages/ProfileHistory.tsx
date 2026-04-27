@@ -539,7 +539,6 @@ export default function ProfileStatistics() {
     if (!user) return;
     setAvatarUploading(true);
 
-    // Always use a fixed path so upsert reliably overwrites the old file
     const path = `${user.id}/avatar`;
 
     const { error: uploadError } = await supabase.storage
@@ -552,14 +551,16 @@ export default function ProfileStatistics() {
       return;
     }
 
-    // Get clean URL (no cache-buster) to store in DB
-    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-    const cleanUrl = data.publicUrl;
+    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+    const cleanUrl = urlData.publicUrl;
 
-    const { error: updateError } = await supabase
+    // Use .select() to force execution and catch silent failures.
+    // Cast payload to any to bypass stale generated types that don't include avatar_url yet.
+    const { data: updatedRows, error: updateError } = await supabase
       .from('profiles')
-      .update({ avatar_url: cleanUrl })
-      .eq('id', user.id);
+      .update({ avatar_url: cleanUrl } as any)
+      .eq('id', user.id)
+      .select('id, avatar_url');
 
     if (updateError) {
       toast({ title: 'Failed to save profile picture', description: updateError.message, variant: 'destructive' });
@@ -567,7 +568,12 @@ export default function ProfileStatistics() {
       return;
     }
 
-    // Add cache-buster only for local display so browser shows the new image immediately
+    if (!updatedRows || updatedRows.length === 0) {
+      toast({ title: 'Failed to save profile picture', description: 'No profile row was updated. Please try again.', variant: 'destructive' });
+      setAvatarUploading(false);
+      return;
+    }
+
     const displayUrl = cleanUrl + '?t=' + Date.now();
     setProfileData(p => p ? { ...p, avatar_url: displayUrl } : p);
     setAvatarUploading(false);
