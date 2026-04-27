@@ -196,17 +196,12 @@ PERSONAL SFT (${personalList.length})`);
     });
   }
 
-  // NOT ATTENDING section
-  const totalNotAttending = notAttending.length + notSubmitted.length;
-  lines.push(`
-NOT ATTENDING (${totalNotAttending})`);
+  // NOT ATTENDING section — only those who submitted with non-participating status
+  const totalNotAttending = notAttending.length;
+  lines.push(`\nNOT ATTENDING (${totalNotAttending})`);
   let idx = 1;
   notAttending.forEach(s => {
-    const reason = statusAbbr[s.attendance_status] ?? s.attendance_status;
-    lines.push(`${idx++}. ${getName(s)} — ${reason}`);
-  });
-  notSubmitted.forEach(m => {
-    lines.push(`${idx++}. ${getMemberName(m)} — No submission`);
+    lines.push(`${idx++}. ${getName(s)} — ${s.attendance_status}`);
   });
 
   return lines.join('\n');
