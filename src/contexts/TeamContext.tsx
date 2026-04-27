@@ -23,6 +23,7 @@ export type TeamMember = {
     ippt_pushups: number | null;
     ippt_situps: number | null;
     ippt_run_seconds: number | null;
+    avatar_url?: string | null;
   };
 };
 
@@ -151,7 +152,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       const { data: profilesRaw } = memberUserIds.length > 0
         ? await supabase
             .from('profiles')
-            .select('id, full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds')
+            .select('id, full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds, avatar_url')
             .in('id', memberUserIds)
         : { data: [] };
 
@@ -342,7 +343,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
       .order('joined_at', { ascending: true });
     const memberUserIds = (membersRaw ?? []).map((m: any) => m.user_id);
     const { data: profilesRaw } = memberUserIds.length > 0
-      ? await supabase.from('profiles').select('id, full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds').in('id', memberUserIds)
+      ? await supabase.from('profiles').select('id, full_name, rank, age, ippt_pushups, ippt_situps, ippt_run_seconds, avatar_url').in('id', memberUserIds)
       : { data: [] };
     const profileMap = Object.fromEntries((profilesRaw ?? []).map((p: any) => [p.id, p]));
     const updated: TeamMember[] = (membersRaw ?? []).map((m: any) => ({ ...m, profile: profileMap[m.user_id] ?? undefined }));
