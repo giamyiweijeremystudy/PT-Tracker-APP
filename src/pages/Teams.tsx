@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTeam } from '@/contexts/TeamContext';
@@ -430,7 +431,12 @@ export default function Teams() {
   const canManage     = hasRole(myTeamRole, 'admin') || hasRole(myTeamRole, 'pt_ic');
   const canAssignPTIC = hasRole(myTeamRole, 'admin');
 
-  const [tab, setTab]               = useState<Tab>('activities');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = searchParams.get('tab');
+    if (t === 'activities' || t === 'members' || t === 'submissions' || t === 'schedule' || t === 'leaderboard') return t;
+    return 'activities';
+  });
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
   const [creating, setCreating]     = useState(false);
