@@ -350,6 +350,7 @@ export type Database = {
           ippt_run_seconds: number | null
           is_admin: boolean | null
           team_id: string | null
+          avatar_url: string | null
           created_at: string
           updated_at: string
         }
@@ -367,6 +368,7 @@ export type Database = {
           ippt_run_seconds?: number | null
           is_admin?: boolean | null
           team_id?: string | null
+          avatar_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -384,6 +386,7 @@ export type Database = {
           ippt_run_seconds?: number | null
           is_admin?: boolean | null
           team_id?: string | null
+          avatar_url?: string | null
           created_at?: string
           updated_at?: string
         }
