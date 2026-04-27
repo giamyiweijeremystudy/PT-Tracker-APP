@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -1571,9 +1572,12 @@ export default function Teams() {
               <div key={m.id || m.user_id} className="rounded-xl border bg-card p-4 space-y-3">
                 {/* Member info row */}
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">
-                    {p?.full_name ? initials(p.full_name) : '?'}
-                  </div>
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarImage src={p?.avatar_url ?? undefined} alt={p?.full_name ?? ''} />
+                    <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
+                      {p?.full_name ? initials(p.full_name) : '?'}
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
