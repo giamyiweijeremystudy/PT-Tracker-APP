@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useTeam } from '@/contexts/TeamContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -410,7 +411,8 @@ export default function Activities() {
   const [activities, setActivities]       = useState<SavedActivity[]>([]);
   const [form, setForm]                   = useState<FormState>(defaultForm());
   const [saving, setSaving]               = useState(false);
-  const [showForm, setShowForm]           = useState(false);
+  const [searchParams] = useSearchParams();
+  const [showForm, setShowForm] = useState(() => searchParams.get('upload') === '1');
   const [imageFile, setImageFile]         = useState<File | null>(null);
   const [imagePreview, setImagePreview]   = useState<string | null>(null);
   const [locating, setLocating]           = useState(false);
