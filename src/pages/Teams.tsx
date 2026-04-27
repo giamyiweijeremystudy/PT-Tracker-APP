@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTeam } from '@/contexts/TeamContext';
@@ -424,6 +424,7 @@ export default function Teams() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
   const { team, members, feed, myRole, myTeamRole, loading, createTeam, joinTeam, deleteTeam, removeMember, updateTeam, updateMemberRole, refreshFeed } = useTeam();
+  const navigate = useNavigate();
 
   const hasRole = (roles: string[], role: string) => Array.isArray(roles) && roles.includes(role);
 
@@ -1495,7 +1496,7 @@ export default function Teams() {
                     <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">{mi}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-sm font-semibold">{a.profile?.rank && a.profile.rank !== 'Other' ? `${a.profile.rank} ` : ''}{a.profile?.full_name ?? 'Member'}</p>
+                        <button onClick={() => navigate(`/profile?user=${a.user_id}`)} className="text-sm font-semibold hover:underline text-left">{a.profile?.rank && a.profile.rank !== 'Other' ? `${a.profile.rank} ` : ''}{a.profile?.full_name ?? 'Member'}</button>
                         <span>{emoji}</span>
                         <span className="text-xs font-medium text-primary capitalize">{label}</span>
                       </div>
@@ -1575,9 +1576,12 @@ export default function Teams() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold">
+                      <button
+                        onClick={() => navigate(`/profile?user=${m.user_id}`)}
+                        className="text-sm font-semibold hover:underline text-left"
+                      >
                         {p?.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p?.full_name ?? 'Member'}
-                      </span>
+                      </button>
                       <RoleIcon role={primaryRole} />
                       {memberTeamRole.filter(r => r !== 'member').map(r => (
                         <span key={r} className={`text-xs px-2 py-0.5 rounded-full border ${ROLE_BADGE[r as TeamRole]}`}>
