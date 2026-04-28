@@ -2586,42 +2586,46 @@ export default function Teams() {
                   return (
                     <div key={r.member.user_id}
                       className={`rounded-xl border p-3 transition-all ${i < 3 ? AWARD_BG[i] : 'bg-card'} ${isMe ? 'ring-2 ring-primary' : ''}`}>
-                      <div className="flex items-center gap-3">
-                        {/* Rank */}
-                        <div className={`text-lg font-black w-8 text-center shrink-0 ${i < 3 ? AWARD_COLORS[i] : 'text-muted-foreground'}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        {/* Rank medal / number */}
+                        <div className={`text-base font-black w-7 text-center shrink-0 ${i < 3 ? AWARD_COLORS[i] : 'text-muted-foreground'}`}>
                           {i < 3 ? MEDAL_ICONS[i] : `#${i + 1}`}
                         </div>
                         {/* Avatar */}
-                        <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0">
-                          {p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                        </div>
-                        {/* Name + value */}
+                        <Avatar className="h-8 w-8 shrink-0">
+                          <AvatarImage src={p.avatar_url ?? undefined} alt={p.full_name} />
+                          <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
+                            {p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        {/* Name + bar — takes remaining space */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-sm font-semibold truncate">
                               {p.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p.full_name}
                             </span>
-                            {isMe && <Badge variant="outline" className="text-xs">You</Badge>}
-                            {ippt && (
-                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
-                                {ippt.award}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {isMe && <Badge variant="outline" className="text-[10px] px-1.5 py-0">You</Badge>}
+                              {ippt && (
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
+                                  {ippt.award}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          {/* Bar */}
-                          <div className="mt-1.5 h-1.5 rounded-full bg-border overflow-hidden">
+                          <div className="mt-1 h-1.5 rounded-full bg-border overflow-hidden">
                             <div className="h-full rounded-full bg-primary transition-all"
                               style={{ width: `${lbMetric === 'run' ? (100 - barPct + 10) : barPct}%` }} />
                           </div>
                         </div>
-                        {/* Value */}
-                        <span className={`text-base font-bold tabular-nums shrink-0 ${i < 3 ? AWARD_COLORS[i] : 'text-foreground'}`}>
+                        {/* Value — fixed width so it never wraps */}
+                        <span className={`text-sm font-bold tabular-nums shrink-0 ml-2 ${i < 3 ? AWARD_COLORS[i] : 'text-foreground'}`}>
                           {displayVal}
                         </span>
                       </div>
                       {/* Sub-stats for IPPT */}
                       {lbMetric === 'ippt_total' && p.ippt_pushups && p.ippt_situps && p.ippt_run_seconds && (
-                        <p className="text-xs text-muted-foreground mt-1.5 pl-20">
+                        <p className="text-xs text-muted-foreground mt-1.5 pl-[3.75rem]">
                           PU: {p.ippt_pushups} · SU: {p.ippt_situps} · Run: {fmtTime(p.ippt_run_seconds)}
                         </p>
                       )}
