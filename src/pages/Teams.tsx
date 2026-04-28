@@ -2585,8 +2585,9 @@ export default function Teams() {
 
                   return (
                     <div key={r.member.user_id}
-                      className={`rounded-xl border p-3 transition-all ${i < 3 ? AWARD_BG[i] : 'bg-card'} ${isMe ? 'ring-2 ring-primary' : ''}`}>
-                      <div className="flex items-center gap-2 min-w-0">
+                      className={`rounded-xl border p-3 transition-all overflow-hidden ${i < 3 ? AWARD_BG[i] : isMe ? 'bg-primary/5' : 'bg-card'}`}
+                      style={undefined}>
+                      <div className="flex items-center gap-2 w-full overflow-hidden">
                         {/* Rank medal / number */}
                         <div className={`text-base font-black w-7 text-center shrink-0 ${i < 3 ? AWARD_COLORS[i] : 'text-muted-foreground'}`}>
                           {i < 3 ? MEDAL_ICONS[i] : `#${i + 1}`}
@@ -2598,16 +2599,16 @@ export default function Teams() {
                             {p.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        {/* Name + bar — takes remaining space */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-sm font-semibold truncate">
+                        {/* Name + bar — takes remaining space, must not overflow */}
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex items-center gap-1.5 w-full overflow-hidden">
+                            <span className="text-sm font-semibold truncate min-w-0 flex-1">
                               {p.rank && p.rank !== 'Other' ? `${p.rank} ` : ''}{p.full_name}
                             </span>
                             <div className="flex items-center gap-1 shrink-0">
                               {isMe && <Badge variant="outline" className="text-[10px] px-1.5 py-0">You</Badge>}
                               {ippt && (
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${AWARD_STYLE[ippt.award]}`}>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${AWARD_STYLE[ippt.award]}`}>
                                   {ippt.award}
                                 </span>
                               )}
@@ -2618,14 +2619,14 @@ export default function Teams() {
                               style={{ width: `${lbMetric === 'run' ? (100 - barPct + 10) : barPct}%` }} />
                           </div>
                         </div>
-                        {/* Value — fixed width so it never wraps */}
-                        <span className={`text-sm font-bold tabular-nums shrink-0 ml-2 ${i < 3 ? AWARD_COLORS[i] : 'text-foreground'}`}>
+                        {/* Value — fixed, never wraps */}
+                        <span className={`text-sm font-bold tabular-nums shrink-0 ml-1 ${i < 3 ? AWARD_COLORS[i] : 'text-foreground'}`}>
                           {displayVal}
                         </span>
                       </div>
                       {/* Sub-stats for IPPT */}
                       {lbMetric === 'ippt_total' && p.ippt_pushups && p.ippt_situps && p.ippt_run_seconds && (
-                        <p className="text-xs text-muted-foreground mt-1.5 pl-[3.75rem]">
+                        <p className="text-xs text-muted-foreground mt-1.5 pl-[3.75rem] truncate">
                           PU: {p.ippt_pushups} · SU: {p.ippt_situps} · Run: {fmtTime(p.ippt_run_seconds)}
                         </p>
                       )}
