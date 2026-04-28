@@ -147,9 +147,10 @@ function formatParadeState(
   ];
 
   // Split into attending vs not attending
-  // For SFT: in_camp counts for attendance; personal is logging-only
-  const attending    = submissions.filter(s => s.attendance_status === 'Participating');
-  const notAttending = submissions.filter(s => s.attendance_status !== 'Participating');
+  // Anyone with temperature >= 37.5 is moved to not attending regardless of status
+  const isFever = (s: any) => s.temperature != null && s.temperature >= 37.5;
+  const attending    = submissions.filter(s => s.attendance_status === 'Participating' && !isFever(s));
+  const notAttending = submissions.filter(s => s.attendance_status !== 'Participating' || isFever(s));
   const attendingInCamp = isSFT
     ? attending.filter(s => !s.sft_kind || s.sft_kind === 'in_camp')
     : attending;
@@ -198,12 +199,15 @@ PERSONAL SFT (${personalList.length})`);
     });
   }
 
-  // NOT ATTENDING section — only those who submitted with non-participating status
+  // NOT ATTENDING section — only those who submitted with non-participating status or fever
   const totalNotAttending = notAttending.length;
   lines.push(`\nNOT ATTENDING (${totalNotAttending})`);
   let idx = 1;
   notAttending.forEach(s => {
-    lines.push(`${idx++}. ${getName(s)} — ${s.attendance_status}`);
+    const reason = isFever(s) && s.attendance_status === 'Participating'
+      ? `Fever (${s.temperature}°C)`
+      : s.attendance_status;
+    lines.push(`${idx++}. ${getName(s)} — ${reason}`);
   });
 
   return lines.join('\n');
@@ -228,7 +232,7 @@ type TeamSubmission = {
 };
 
 type Tab = 'activities' | 'members' | 'submissions' | 'schedule' | 'leaderboard';
-type LeaderboardMetric = 'ippt_total' | 'pushups' | 'situps' | 'run' | 'activities';
+type LeaderboardMetric = 'ippt_total' | 'pushups' | 'situps' | 'run' | 'activities' | 'distance';
 type TeamRole = 'admin' | 'pt_ic' | 'spartan' | 'member';
 
 // ── Team posts (polls, notices, questions) ────────────────────────────────────
@@ -573,6 +577,7 @@ export default function Teams() {
   const [expandedPost, setExpandedPost]       = useState<string | null>(null);
   const [lbMetric, setLbMetric]               = useState<LeaderboardMetric>('ippt_total');
   const [activityCounts, setActivityCounts]   = useState<Record<string, number>>({});
+  const [distanceTotals, setDistanceTotals]   = useState<Record<string, number>>({});
   const [allSubmissions, setAllSubmissions]   = useState<(TeamSubmission & { profile?: { full_name: string; rank: string } })[]>([]);
 
   // ── Events + Submissions ─────────────────────────────────────────────────────
@@ -746,15 +751,34 @@ export default function Teams() {
   const fetchActivityCounts = useCallback(async () => {
     if (!team || members.length === 0) return;
     const memberIds = members.map(m => m.user_id);
-    const { data } = await supabase
+
+    // Fetch activity counts
+    const { data: taData } = await supabase
       .from('team_activities')
-      .select('user_id')
+      .select('user_id, activity_id')
       .eq('team_id', team.id);
-    if (!data) return;
+
+    // Fetch distance totals via activities join
+    const { data: distData } = await supabase
+      .from('team_activities')
+      .select('user_id, activities!inner(distance_km)')
+      .eq('team_id', team.id);
+
     const counts: Record<string, number> = {};
-    memberIds.forEach(id => { counts[id] = 0; });
-    data.forEach((row: any) => { if (counts[row.user_id] !== undefined) counts[row.user_id]++; });
+    const distances: Record<string, number> = {};
+    memberIds.forEach(id => { counts[id] = 0; distances[id] = 0; });
+
+    if (taData) taData.forEach((row: any) => {
+      if (counts[row.user_id] !== undefined) counts[row.user_id]++;
+    });
+
+    if (distData) distData.forEach((row: any) => {
+      const km = row.activities?.distance_km;
+      if (km != null && distances[row.user_id] !== undefined) distances[row.user_id] += Number(km);
+    });
+
     setActivityCounts(counts);
+    setDistanceTotals(distances);
   }, [team, members]);
 
   useEffect(() => { if (team && members.length > 0) fetchActivityCounts(); }, [team, members, fetchActivityCounts]);
@@ -2485,11 +2509,12 @@ export default function Teams() {
       {/* ── Leaderboard ── */}
       {tab === 'leaderboard' && (() => {
         const METRICS: { id: LeaderboardMetric; label: string; unit: string; higherBetter: boolean }[] = [
-          { id: 'ippt_total', label: 'IPPT Score',     unit: 'pts',  higherBetter: true  },
-          { id: 'pushups',    label: 'Push-ups',       unit: 'reps', higherBetter: true  },
-          { id: 'situps',     label: 'Sit-ups',        unit: 'reps', higherBetter: true  },
-          { id: 'run',        label: '2.4km Run',      unit: '',     higherBetter: false },
-          { id: 'activities', label: 'Activities',     unit: 'logs', higherBetter: true  },
+          { id: 'ippt_total', label: 'IPPT Score',  unit: 'pts',  higherBetter: true  },
+          { id: 'pushups',    label: 'Push-ups',    unit: 'reps', higherBetter: true  },
+          { id: 'situps',     label: 'Sit-ups',     unit: 'reps', higherBetter: true  },
+          { id: 'run',        label: '2.4km Run',   unit: '',     higherBetter: false },
+          { id: 'activities', label: 'Activities',  unit: 'logs', higherBetter: true  },
+          { id: 'distance',   label: 'Distance',    unit: 'km',   higherBetter: true  },
         ];
 
         const getValue = (m: typeof members[0]): number | null => {
@@ -2503,6 +2528,7 @@ export default function Teams() {
           if (lbMetric === 'situps')     return p.ippt_situps ?? null;
           if (lbMetric === 'run')        return p.ippt_run_seconds ?? null;
           if (lbMetric === 'activities') return activityCounts[m.user_id] ?? 0;
+          if (lbMetric === 'distance')   return distanceTotals[m.user_id] > 0 ? distanceTotals[m.user_id] : null;
           return null;
         };
 
@@ -2526,10 +2552,10 @@ export default function Teams() {
         return (
           <div className="space-y-4">
             {/* Metric selector */}
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex flex-wrap gap-2">
               {METRICS.map(m => (
                 <button key={m.id} onClick={() => setLbMetric(m.id)}
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
                     ${lbMetric === m.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border hover:bg-muted'}`}>
                   {m.label}
                 </button>
@@ -2550,6 +2576,8 @@ export default function Teams() {
                   const barPct = maxVal > 0 ? (r.value! / maxVal) * 100 : 0;
                   const displayVal = lbMetric === 'run'
                     ? fmtTime(r.value)
+                    : lbMetric === 'distance'
+                    ? `${r.value!.toFixed(1)} km`
                     : `${r.value}${metric.unit ? ' ' + metric.unit : ''}`;
                   const ippt = (lbMetric === 'ippt_total' && p.ippt_pushups && p.ippt_situps && p.ippt_run_seconds && p.age)
                     ? calcIpptAward(p.ippt_pushups, p.ippt_situps, p.ippt_run_seconds, p.age)
@@ -2720,7 +2748,12 @@ export default function Teams() {
         const daySubs = allSubmissions.filter(s => s.submission_date === submissionPopupDate);
         const notSubmitted = members.filter(m => !daySubs.some(s => s.user_id === m.user_id));
         const sortedDaySubs = [...daySubs].sort((a, b) => {
-          const od = (STATUS_ORDER[a.attendance_status] ?? 99) - (STATUS_ORDER[b.attendance_status] ?? 99);
+          // Fever (Participating but temp >= 37.5) sorts after non-participating statuses
+          const aFever = a.temperature != null && a.temperature >= 37.5 && a.attendance_status === 'Participating';
+          const bFever = b.temperature != null && b.temperature >= 37.5 && b.attendance_status === 'Participating';
+          const aOrder = aFever ? 98 : (STATUS_ORDER[a.attendance_status] ?? 99);
+          const bOrder = bFever ? 98 : (STATUS_ORDER[b.attendance_status] ?? 99);
+          const od = aOrder - bOrder;
           if (od !== 0) return od;
           const na = a.profile ? `${a.profile.rank && a.profile.rank !== 'Other' ? a.profile.rank+' ':'' }${a.profile.full_name}` : '';
           const nb = b.profile ? `${b.profile.rank && b.profile.rank !== 'Other' ? b.profile.rank+' ':'' }${b.profile.full_name}` : '';
